@@ -1,23 +1,23 @@
-# Architektur
+# Architecture
 
-## Überblick
+## Overview
 
 ```
-argv[0]  ──►  basename  ──►  Applet-Name
+argv[0]  ──►  basename  ──►  applet name
                 │
                 ▼
-         cube <cmd> ?  ──►  args[1] als Applet
+         cube <cmd> ?  ──►  args[1] as applet
                 │
                 ▼
             dispatch()  ──►  cmdXxx()
 ```
 
-Das Binary ist ein klassischer **Multi-Call-Binary**:
+The binary is a classic **multi-call binary**:
 
-1. Wird es als `busybox` (oder `bb`) aufgerufen, kommt der Applet-Name aus `argv[1]`.
-2. Wird es über einen Symlink (`ls` → `busybox`) aufgerufen, ist der Applet-Name der Basename von `argv[0]`.
+1. When invoked as `cube` (or `busybox` / `bb`), the applet name comes from `argv[1]`.
+2. When invoked via a symlink (`ls` → `cube`), the applet name is the basename of `argv[0]`.
 
-## Zig 0.16 Einstiegspunkt
+## Zig 0.16 entry point
 
 ```zig
 pub fn main(init: std.process.Init) !void {
@@ -28,21 +28,21 @@ pub fn main(init: std.process.Init) !void {
 }
 ```
 
-Wichtige Teile von `Init`:
+Important fields of `Init`:
 
-| Feld            | Zweck                              |
-|-----------------|-------------------------------------|
-| `arena`         | Lifetime = Prozess                  |
-| `gpa`           | General-Purpose-Allocator           |
-| `io`            | `std.Io` – alle I/O-Operationen     |
-| `minimal.args`  | Kommandozeilenargumente             |
-| `environ_map`   | Umgebung (für `env`/`printenv`)     |
+| Field           | Purpose                              |
+|-----------------|--------------------------------------|
+| `arena`         | Lifetime = process                   |
+| `gpa`           | General-purpose allocator            |
+| `io`            | `std.Io` – all I/O operations        |
+| `minimal.args`  | Command-line arguments               |
+| `environ_map`   | Environment (for `env` / `printenv`) |
 
-## I/O-Modell (std.Io)
+## I/O model (`std.Io`)
 
-Ab Zig 0.16 sind Dateisystem- und I/O-Operationen über die `Io`-Schnittstelle abstrahiert:
+As of Zig 0.16, filesystem and I/O operations go through the `Io` interface:
 
-- `Io.Dir.cwd()` – aktuelles Verzeichnis
+- `Io.Dir.cwd()` – current directory
 - `dir.openFile(io, path, opts)`
 - `dir.createFile(io, path, opts)`
 - `dir.createDir(io, path, permissions)`
@@ -50,13 +50,13 @@ Ab Zig 0.16 sind Dateisystem- und I/O-Operationen über die `Io`-Schnittstelle a
 - `reader.interface.takeDelimiter('\n')`
 - `reader.interface.readSliceShort(buf)`
 
-Alle syscalls laufen über den `Io`-VTable (Threaded, Uring, …).
+All syscalls run through the `Io` vtable (Threaded, Uring, …).
 
-## Dateistruktur (aktuell)
+## Layout (current)
 
 ```
 src/
-  main.zig          # Dispatch + alle Applets (monolithisch)
+  main.zig          # dispatch + all applets (monolithic)
 docs/
   ARCHITECTURE.md
   APPLETS.md
@@ -66,12 +66,12 @@ README.md
 build.zig
 ```
 
-**Geplant (Phase 6):**
+**Planned (Phase 6):**
 
 ```
 src/
-  main.zig          # nur Dispatch + main
-  util.zig          # gemeinsame Helfer (Flags, Fehler, Pfade)
+  main.zig          # dispatch + main only
+  util.zig          # shared helpers (flags, errors, paths)
   applets/
     echo.zig
     cat.zig
@@ -79,24 +79,24 @@ src/
     ...
 ```
 
-## Fehlerbehandlung
+## Error handling
 
-Konvention (BusyBox-ähnlich):
+Convention (BusyBox-like):
 
 ```
-applet: dateiname: No such file or directory
+applet: filename: No such file or directory
 ```
 
-Exit-Codes:
+Exit codes:
 
-| Code | Bedeutung                |
-|------|--------------------------|
-| 0    | Erfolg                   |
-| 1    | genereller Fehler        |
-| 127  | Applet nicht gefunden    |
+| Code | Meaning              |
+|------|----------------------|
+| 0    | Success              |
+| 1    | General error        |
+| 127  | Applet not found     |
 
-## Build-System
+## Build system
 
-`build.zig` erzeugt ein einziges Executable namens `busybox`.  
-Keine externen Dependencies.  
-`ReleaseSmall` ist der empfohlene Optimierungsmodus für Größe.
+`build.zig` produces a single executable named `cube`.  
+No external dependencies.  
+`ReleaseSmall` is the recommended optimization mode for size.

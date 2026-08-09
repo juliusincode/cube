@@ -38,10 +38,12 @@ uname  whoami  id  date  clear  seq  test  [  printf  env
 printenv
 ```
 
+See ROADMAP and APPLETS.md for accuracy and planned features.
+
 ## Build options
 
 ```bash
-zig build -Doptimize=ReleaseSmall   # smallest binary (default goal)
+zig build -Doptimize=ReleaseSmall   # smallest binary (preferred)
 zig build -Doptimize=ReleaseFast
 zig build -Doptimize=Debug
 zig build run -- echo hello

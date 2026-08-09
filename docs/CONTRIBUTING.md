@@ -1,8 +1,8 @@
-# Neue Applets hinzufügen
+# Adding new applets
 
-## 1. Funktion schreiben
+## 1. Write the function
 
-In `src/main.zig` (später in `src/applets/xxx.zig`):
+In `src/main.zig` (later in `src/applets/xxx.zig`):
 
 ```zig
 fn cmdPrintf(io: Io, args: []const [:0]const u8) !void {
@@ -11,7 +11,7 @@ fn cmdPrintf(io: Io, args: []const [:0]const u8) !void {
 }
 ```
 
-## 2. In den Dispatch eintragen
+## 2. Register in the dispatcher
 
 ```zig
 } else if (mem.eql(u8, applet, "printf")) {
@@ -19,24 +19,24 @@ fn cmdPrintf(io: Io, args: []const [:0]const u8) !void {
 }
 ```
 
-## 3. Hilfe aktualisieren
+## 3. Update help
 
-In `printUsage()` die Liste der verfügbaren Applets erweitern.
+Extend the applet list in `printUsage()`.
 
-## 4. ROADMAP + APPLETS.md anpassen
+## 4. Update ROADMAP + APPLETS.md
 
-Status von ⬜ auf 🟡/✅ setzen und Flags dokumentieren.
+Set status from ⬜ to 🟡/✅ and document flags.
 
-## Tipps
+## Tips
 
-- Für Ausgaben immer `Io.File.Writer` + `flush` verwenden.
-- Fehler im Stil `printf: ...\n` auf stderr schreiben.
-- Bei fehlenden Operanden sinnvollen Exit-Code (meist 1).
-- Arena-Allocator für temporäre Allokationen nutzen.
-- Keine globalen Variablen; alles über Parameter.
-- `std.process.exit(n)` nur wenn der Prozess wirklich beendet werden soll.
+- Always use `Io.File.Writer` + `flush` for output.
+- Write errors in the style `printf: ...\n` to stderr.
+- Use a sensible exit code for missing operands (usually 1).
+- Use the arena allocator for temporary allocations.
+- No global variables; pass everything as parameters.
+- Call `std.process.exit(n)` only when the process must actually terminate.
 
-## Beispiel-Skelett
+## Example skeleton
 
 ```zig
 fn cmdFoo(io: Io, args: []const [:0]const u8) !void {

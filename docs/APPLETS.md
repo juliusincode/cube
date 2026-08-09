@@ -1,44 +1,44 @@
-# Applets – Übersicht
+# Applets – overview
 
-Stand: Phase 1 (in Arbeit)
+Status: Phase 1 (in progress)
 
-| Applet     | Status | Wichtige Flags / Verhalten                          | Bemerkung |
-|------------|--------|-----------------------------------------------------|-----------|
-| echo       | 🟡     | `-n`                                                | `-e` geplant |
-| true       | ✅     | Exit 0                                              | |
-| false      | ✅     | Exit 1                                              | |
-| cat        | 🟡     | mehrere Dateien, stdin                              | `-n` geplant |
-| ls         | ✅     | `-a -A -l -h -d -F`, sortiert, multi-path           | owner/group optional |
+| Applet     | Status | Important flags / behaviour                         | Notes |
+|------------|--------|-----------------------------------------------------|-------|
+| echo       | 🟡     | `-n`                                                | `-e` planned |
+| true       | ✅     | exit 0                                              | |
+| false      | ✅     | exit 1                                              | |
+| cat        | 🟡     | multiple files, stdin                               | `-n` planned |
+| ls         | ✅     | `-a -A -l -h -d -F`, sorted, multi-path             | owner/group optional |
 | pwd        | ✅     |                                                     | |
-| mkdir      | 🟡     |                                                     | `-p -m` geplant |
+| mkdir      | ✅     | `-p`                                                | `-m` later |
 | rmdir      | ✅     |                                                     | |
-| rm         | 🟡     | Dateien                                             | `-r -f` geplant |
-| touch      | 🟡     | create / open                                       | mtime-Update verbessern |
-| cp         | 🟡     | einfache Dateikopie                                 | `-r` geplant |
-| mv         | 🟡     | rename                                              | Ziel-Dir geplant |
-| ln         | 🟡     | `-s`, hardlink                                      | `-f` |
-| sleep      | ✅     | Sekunden (float)                                    | |
+| rm         | ✅     | `-r`/`-R`, `-f`, `-rf`                              | no `-i` |
+| touch      | 🟡     | create / open                                       | improve mtime update |
+| cp         | 🟡     | simple file copy                                    | `-r` planned |
+| mv         | 🟡     | rename                                              | dir target planned |
+| ln         | 🟡     | `-s`, hard link                                     | `-f` |
+| sleep      | ✅     | seconds (float)                                     | |
 | yes        | ✅     |                                                     | |
 | head       | 🟡     | `-n`                                                | |
-| tail       | 🟡     | `-n` (buffert alles)                                | |
-| wc         | 🟡     | Zeilen/Wörter/Bytes                                 | Flags geplant |
+| tail       | 🟡     | `-n` (buffers all)                                  | |
+| wc         | 🟡     | lines / words / bytes                               | flags planned |
 | basename   | ✅     |                                                     | |
 | dirname    | ✅     |                                                     | |
-| uname      | 🟡     | festes Format                                       | `-a` etc. |
-| whoami     | 🟡     | Stub                                                | echte UID |
-| id         | 🟡     | Stub                                                | echte UID/GID |
-| date       | 🟡     | Unix-Timestamp                                      | Format-String |
+| uname      | 🟡     | fixed format                                        | `-a` etc. |
+| whoami     | 🟡     | stub                                                | real UID |
+| id         | 🟡     | stub                                                | real UID/GID |
+| date       | 🟡     | Unix timestamp                                      | format string |
 | clear      | ✅     | ANSI                                                | |
 | seq        | ✅     | start [step] end                                    | |
-| test / [   | 🟡     | sehr minimal                                        | erweitern |
-| printf     | ✅     | `%s%d%i%u%x%X%c`, Escapes `\n\t\r`                  | Breite/Präzision später |
-| env        | ✅     | alle Variablen ausgeben                             | `env KEY=VAL cmd` später |
-| printenv   | ✅     | eine Variable                                       | |
+| test / [   | 🟡     | very minimal                                        | expand |
+| printf     | ✅     | `%s%d%i%u%x%X%c`, escapes `\n\t\r`                  | width/precision later |
+| env        | ✅     | print all variables                                 | `env KEY=VAL cmd` later |
+| printenv   | ✅     | single variable                                     | |
 | which      | ⬜     |                                                     | |
 | grep       | ⬜     |                                                     | Phase 2 |
 | find       | ⬜     |                                                     | Phase 4 |
 
-## Legende
-- ✅ brauchbar
-- 🟡 grundlegend, Flags/Kantenfälle fehlen
-- ⬜ noch nicht implementiert
+## Legend
+- ✅ usable
+- 🟡 basic; flags / edge cases missing
+- ⬜ not implemented yet
