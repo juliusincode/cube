@@ -1,0 +1,29 @@
+# Zig
+.zig-cache/
+zig-cache/
+zig-out/
+/tmp/
+
+# Build / install prefixes
+/prefix/
+/out/
+
+# Editor / OS
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
+*.code-workspace
+
+# Debug / core
+*.o
+*.a
+*.so
+core
+*.core
+
+# Test artefacts
+/tmp/
+*.log
