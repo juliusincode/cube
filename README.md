@@ -9,7 +9,7 @@ The long-term goal is a **complete, production-capable BusyBox alternative**
 the project tree.
 
 ```text
-cube 0.2.0 — multi-call utilities for Linux
+cube 0.2.0 — multi-call core utilities for Linux
 ```
 
 ## Why cube?
