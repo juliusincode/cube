@@ -126,4 +126,4 @@ future work (see roadmap).
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+still open
