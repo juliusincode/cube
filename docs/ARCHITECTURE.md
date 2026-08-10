@@ -1,23 +1,24 @@
 # Architecture
 
-## Overview
+## Multi-call dispatch
 
 ```
-argv[0]  ──►  basename  ──►  applet name
+argv[0]  →  basename  →  applet name
                 │
                 ▼
-         cube <cmd> ?  ──►  args[1] as applet
+     name is cube/busybox/bb ?
                 │
+        yes     │     no
+         ▼      │      ▼
+   argv[1] =    │   basename(argv[0])
+   applet       │   = applet
                 ▼
-            dispatch()  ──►  cmdXxx()
+           dispatch() → applets.*.cmdXxx()
 ```
 
-The binary is a classic **multi-call binary**:
+Symlink example: `ls` → `cube` → applet `ls`.
 
-1. When invoked as `cube` (or `busybox` / `bb`), the applet name comes from `argv[1]`.
-2. When invoked via a symlink (`ls` → `cube`), the applet name is the basename of `argv[0]`.
-
-## Zig 0.16 entry point
+## Zig 0.16 entry
 
 ```zig
 pub fn main(init: std.process.Init) !void {
@@ -28,75 +29,50 @@ pub fn main(init: std.process.Init) !void {
 }
 ```
 
-Important fields of `Init`:
+| `Init` field      | Role |
+|-------------------|------|
+| `arena`           | Process-lifetime allocator |
+| `io`              | `std.Io` for all I/O |
+| `minimal.args`    | argv |
+| `environ_map`     | Environment (`env` / `which`) |
 
-| Field           | Purpose                              |
-|-----------------|--------------------------------------|
-| `arena`         | Lifetime = process                   |
-| `gpa`           | General-purpose allocator            |
-| `io`            | `std.Io` – all I/O operations        |
-| `minimal.args`  | Command-line arguments               |
-| `environ_map`   | Environment (for `env` / `printenv`) |
+## Modules (`build.zig`)
 
-## I/O model (`std.Io`)
+Named imports:
 
-As of Zig 0.16, filesystem and I/O operations go through the `Io` interface:
+| Name | Source |
+|------|--------|
+| `util` | `src/util.zig` |
+| `text` | `src/applets/text.zig` |
+| `fs`   | `src/applets/fs.zig` |
+| `sys`  | `src/applets/sys.zig` |
+| `version` | `src/version.zig` |
+| `applets_list` | `src/applets_list.zig` |
 
-- `Io.Dir.cwd()` – current directory
-- `dir.openFile(io, path, opts)`
-- `dir.createFile(io, path, opts)`
-- `dir.createDir(io, path, permissions)`
-- `Io.File.Reader` / `Io.File.Writer`
-- `reader.interface.takeDelimiter('\n')`
-- `reader.interface.readSliceShort(buf)`
+`main.zig` imports all four. Applets import `util` only.
 
-All syscalls run through the `Io` vtable (Threaded, Uring, …).
+## I/O notes
 
-## Layout (current)
+- Prefer `Io.File.Writer.initStreaming` for **stdout/stderr** (positional mode overwrites from offset 0).
+- Filesystem calls go through `Io.Dir` / `Io.File` with the `io` handle.
+- Symlink-aware tools (`find -type l`, `readlink`) use `follow_symlinks = false` where needed.
 
-```
-src/
-  main.zig          # dispatch + all applets (monolithic)
-docs/
-  ARCHITECTURE.md
-  APPLETS.md
-  CONTRIBUTING.md
-ROADMAP.md
-README.md
-build.zig
-```
-
-**Planned (Phase 6):**
+## Error style
 
 ```
-src/
-  main.zig          # dispatch + main only
-  util.zig          # shared helpers (flags, errors, paths)
-  applets/
-    echo.zig
-    cat.zig
-    ls.zig
-    ...
+applet: path: Message
 ```
 
-## Error handling
+| Exit | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 127 | Unknown applet |
 
-Convention (BusyBox-like):
+## Tests
 
+```bash
+zig build test
 ```
-applet: filename: No such file or directory
-```
 
-Exit codes:
-
-| Code | Meaning              |
-|------|----------------------|
-| 0    | Success              |
-| 1    | General error        |
-| 127  | Applet not found     |
-
-## Build system
-
-`build.zig` produces a single executable named `cube`.  
-No external dependencies.  
-`ReleaseSmall` is the recommended optimization mode for size.
+`test "…"` blocks live next to the code (`util`, `text`, `fs`, `main`).

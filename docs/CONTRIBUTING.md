@@ -1,36 +1,44 @@
 # Adding new applets
 
-## 1. Write the function
+## 1. Choose a module
 
-In `src/main.zig` (later in `src/applets/xxx.zig`):
+| Kind of applet | File |
+|----------------|------|
+| Text / filters | `src/applets/text.zig` |
+| Filesystem | `src/applets/fs.zig` |
+| System / env | `src/applets/sys.zig` |
+| Shared helper | `src/util.zig` |
+
+## 2. Write a public function
 
 ```zig
-fn cmdPrintf(io: Io, args: []const [:0]const u8) !void {
-    // args[0] == "printf"
+pub fn cmdFoo(io: Io, args: []const [:0]const u8) !void {
+    // args[0] == "foo"
     // ...
 }
 ```
 
-## 2. Register in the dispatcher
+Use `util.writeAll` for simple stderr/stdout writes.
+
+## 3. Register in the dispatcher
+
+In `src/main.zig`:
 
 ```zig
-} else if (mem.eql(u8, applet, "printf")) {
-    try cmdPrintf(io, argv);
+} else if (mem.eql(u8, applet, "foo")) {
+    try text.cmdFoo(io, argv); // or fs. / sys.
 }
 ```
 
-## 3. Update help
+## 4. Update help and docs
 
-Extend the applet list in `printUsage()`.
-
-## 4. Update ROADMAP + APPLETS.md
-
-Set status from ⬜ to 🟡/✅ and document flags.
+- Extend the list in `printUsage()` in `main.zig`
+- Set status in `ROADMAP.md` and `docs/APPLETS.md`
 
 ## Tips
 
-- Always use `Io.File.Writer` + `flush` for output.
-- Write errors in the style `printf: ...\n` to stderr.
+- Always use `Io.File.Writer.initStreaming` for stdout/stderr.
+- Write errors as `foo: ...\n` to stderr.
 - Use a sensible exit code for missing operands (usually 1).
 - Use the arena allocator for temporary allocations.
 - No global variables; pass everything as parameters.
@@ -39,11 +47,39 @@ Set status from ⬜ to 🟡/✅ and document flags.
 ## Example skeleton
 
 ```zig
-fn cmdFoo(io: Io, args: []const [:0]const u8) !void {
+pub fn cmdFoo(io: Io, args: []const [:0]const u8) !void {
     if (args.len < 2) {
-        try writeAll(io, .stderr(), "foo: missing operand\n");
+        try util.writeAll(io, .stderr(), "foo: missing operand\n");
         std.process.exit(1);
     }
     // ...
 }
 ```
+
+
+## Unit tests
+
+Add `test "name" { ... }` blocks in the same file as the code under test.
+
+```zig
+test "my helper" {
+    try std.testing.expectEqualStrings("x", myHelper("a/x"));
+}
+```
+
+Run all tests:
+
+```bash
+zig build test
+```
+
+
+## Integration tests
+
+```bash
+zig build -Doptimize=ReleaseSmall
+python3 tests/harness.py --cube zig-out/bin/cube
+```
+
+`tests/harness.py` exercises globals and major applets in a temporary
+directory (exit codes, stdout, side effects). Extend it when adding applets.

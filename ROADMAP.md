@@ -1,6 +1,9 @@
 # Roadmap – cube
 
-Goal: An educational, modular, and reasonably compatible BusyBox-style multi-call binary written in pure Zig 0.16.
+Goal: A **production-capable BusyBox alternative** in pure Zig 0.16+ —
+small, auditable, multi-call, with behaviour aligned to BusyBox/POSIX where practical.
+
+**Current release:** 0.2.0 — solid core + everyday tools; not full applet parity yet.
 
 ## Status legend
 - ✅ implemented (basic / usable)
@@ -16,70 +19,70 @@ Goal: An educational, modular, and reasonably compatible BusyBox-style multi-cal
 - ✅ ReleaseSmall build (~200 KB)
 - ✅ Core applets: echo, true/false, cat, ls, pwd, mkdir, rmdir, rm, touch, cp, mv, ln, sleep, yes, head, tail, wc, basename, dirname, uname, whoami, id, date, clear, seq, test/[
 
-## Phase 1 – Robustness & core utilities (current)
+## Phase 1 – Robustness & core utilities (mostly done)
 Priority: make the most-used tools solid and practical.
 
 | Applet           | Status | Next steps |
 |------------------|--------|------------|
-| echo             | 🟡     | `-e` / `-E`, escape sequences |
-| cat              | 🟡     | `-n`, `-b`, `-s` |
+| echo             | ✅     | `-n -e -E`, escapes `\n \t \r` etc. |
+| cat              | ✅     | `-n -b -s`, multi-file, stdin |
 | ls               | ✅     | `-a -A -l -h -d -F` (no `-R` yet) |
 | rm               | ✅     | `-r`/`-R`, `-f` (no `-i` yet) |
-| cp               | 🟡     | `-r`, `-p`, `-v`, directory target |
-| mv               | 🟡     | directory target, `-v` |
+| cp               | ✅     | `-r`/`-R`, multi-src into dir (no `-p` yet) |
+| mv               | ✅     | multi-src → directory |
 | mkdir            | ✅     | `-p` (no `-m` yet) |
-| touch            | 🟡     | mtime update, `-c` |
-| ln               | 🟡     | `-f` |
-| head/tail        | 🟡     | `-c`, `-q`/`-v` |
-| wc               | 🟡     | `-l`/`-w`/`-c` flags |
-| test / [         | 🟡     | real checks (`-f`, `-d`, `-e`, …) |
+| touch            | ✅     | `-c`, mtime update |
+| ln               | ✅     | `-s -f` |
+| head/tail        | ✅     | `-n -c` both |
+| wc               | ✅     | `-l -w -c`, multi-file totals |
+| test / [         | ✅     | `-f -d -e -z -n -r -w -x -s`, `= != -eq…`, `!` |
 | printf           | ✅     | `%s %d %i %u %x %X %c`, `\n \t \r` |
 | env / printenv   | ✅     | all / single variable |
-| which / type     | ⬜     | new |
+| which / type     | ✅/⬜  | `which` done; `type` later |
 | dirname/basename | ✅     | optional suffix support |
 
 **Phase 1 milestone:** All core file tools are everyday-usable and support the most important POSIX/BusyBox flags.
 
-## Phase 2 – Text & search
+## Phase 2 – Text & search (mostly done)
 | Applet       | Status | Notes |
 |--------------|--------|-------|
-| grep         | ⬜     | basic + `-i`, `-v`, `-n`, `-r` |
-| sed          | ⬜     | simple `s///` only |
-| cut          | ⬜     | `-d`, `-f`, `-c` |
-| sort         | ⬜     | `-n`, `-r`, `-u` |
-| uniq         | ⬜     | |
-| tr           | ⬜     | |
-| rev          | ⬜     | |
+| grep         | ✅     | fixed-string; `-i -v -n -r -l -c -q -H -h` |
+| sed          | ✅     | fixed-string `s///` + `g`, `-n` |
+| cut          | ✅     | `-d -f -c` |
+| sort         | ✅     | `-n -r -u` |
+| uniq         | ✅     | `-c -d -u` |
+| tr           | ✅     | `-d`, ranges |
+| rev          | ✅     | |
 | od / hexdump | ⬜     | |
 
-## Phase 3 – System & process
+## Phase 3 – System & process (partial)
 | Applet       | Status | Notes |
 |--------------|--------|-------|
-| ps           | ⬜     | `/proc`-based |
-| kill         | ⬜     | |
+| ps           | ✅     | USER VSZ RSS STAT COMMAND, `-p` |
+| kill         | ✅     | signals by name/number |
 | killall      | ⬜     | |
-| free         | ⬜     | |
-| uptime       | ⬜     | |
-| df           | ⬜     | |
-| du           | ⬜     | |
+| free         | ✅     | `-h` |
+| uptime       | ✅     | |
+| df           | ✅     | `-h` |
+| du           | ✅     | `-s -h` |
 | mount/umount | ⬜     | careful |
-| hostname     | ⬜     | |
-| uname        | 🟡     | more flags (`-a`, `-s`, …) |
-| id/whoami    | 🟡     | real UID/GID via posix |
-| date         | 🟡     | format string (`+…`) |
+| hostname     | ✅     | |
+| uname        | ✅     | `-a -s -n -r -v -m` |
+| id/whoami    | ✅     | numeric uid/gid |
+| date         | ✅     | `+FORMAT` |
 
 ## Phase 4 – Shell & scripting helpers
 | Applet   | Status | Notes |
 |----------|--------|-------|
 | sh / ash | ❌/⬜  | large – optional later |
-| xargs    | ⬜     | |
-| find     | ⬜     | basic + `-name`, `-type` |
+| xargs    | ✅     | `-n -0` |
+| find     | ✅     | `-name` `*`/`?`, `-type f|d|l`, `-maxdepth` |
 | expr     | ⬜     | |
 | test     | 🟡     | expand |
 | printf   | ✅     | |
-| readlink | ⬜     | |
-| realpath | ⬜     | |
-| mktemp   | ⬜     | |
+| readlink | ✅     | |
+| realpath | ✅     | |
+| mktemp   | ✅     | |
 | install  | ⬜     | |
 
 ## Phase 5 – Networking (optional)
@@ -92,10 +95,10 @@ Priority: make the most-used tools solid and practical.
 | netstat   | ⬜     |
 
 ## Phase 6 – Architecture & quality
-- ⬜ Applets in separate modules (`src/applets/*.zig`)
-- ⬜ Shared helpers (`src/util.zig`: flags, paths, error printing)
+- ✅ Applets in modules (`src/applets/{text,fs,sys}.zig`)
+- ✅ Shared helpers (`src/util.zig`)
 - ⬜ Per-applet `--help`
-- ⬜ Tests (at least for pure functions)
+- ✅ Unit tests (`zig build test`) for pure helpers
 - ⬜ `CONFIG_*`-style compile-time feature toggles
 - ⬜ Further size optimization (ReleaseSmall + strip)
 - ⬜ Man pages / `cube --list`
@@ -105,16 +108,11 @@ Priority: make the most-used tools solid and practical.
 
 ## Next concrete steps (order)
 
-1. Documentation & structure ← *done*
-2. `printf` ← *done*
-3. `rm -r` / `rm -f` ← *done*
-4. `mkdir -p` ← *done*
-5. Better `ls` (`-l`, `-a`, …) ← *done*
-6. Expand `test` / `[`
-7. `cp -r`
-8. `which`
-9. `grep` (basic)
-10. Refactor into modules
+1. `sed` (simple `s///`) / richer `grep`
+2. `ps` / `kill`
+3. `xargs` / `mktemp`
+4. Per-applet `--help`
+5. More unit / integration tests
 
 ## Design principles
 - No C code – pure Zig
