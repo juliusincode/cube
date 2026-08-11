@@ -22,7 +22,7 @@ ln -s cube grep && ./grep -n pattern file.txt
 | Item | State |
 |------|--------|
 | Release | **0.3.0** |
-| Applets | **82** (`cube --list`) |
+| Applets | **85** (`cube --list`) |
 | Integration tests | **110+** (`tests/harness.py`) |
 | Zig | **0.16+** |
 | Full BusyBox parity | Not yet (see [ROADMAP.md](ROADMAP.md)) |
@@ -68,7 +68,7 @@ Symlink any applet name to the binary to invoke it directly.
 | Group | Examples |
 |-------|----------|
 | **Shell / text** | `echo` `printf` `cat` `head` `tail` `wc` `grep` `sed` `sort` `cut` `uniq` `tr` `rev` `tee` `xargs` `nl` `tac` `fold` `fmt` `paste` `expand` `split` `shuf` `join` `comm` `base64` `od` `strings` `seq` `yes` `expr` `factor` |
-| **Filesystem** | `ls` `pwd` `mkdir` `rmdir` `rm` `touch` `cp` `mv` `ln` `chmod` `unlink` `basename` `dirname` `readlink` `realpath` `find` `du` `df` `mktemp` `truncate` `dd` `install` |
+| **Filesystem** | `ls` `pwd` `mkdir` `rmdir` `rm` `touch` `cp` `mv` `ln` `chmod` `unlink` `basename` `dirname` `readlink` `realpath` `find` `du` `df` `mktemp` `truncate` `dd` `install` `gzip`/`gunzip` |
 | **System** | `uname` `arch` `hostname` `whoami` `id` `date` `clear` `sleep` `uptime` `free` `ps` `kill` `nproc` `sync` `which` `env` `printenv` |
 | **Logic / hash** | `true` `false` `test` `[` `md5sum` `sha256sum` `cmp` |
 

@@ -433,6 +433,27 @@ def test_text(c: Cube, s: Suite) -> None:
 
     p = c.run("unexpand", "-t", "4", stdin="    x\n")
     s.expect("unexpand", p.returncode == 0 and b"\t" in p.stdout)
+    p = c.run("mkdir", "-m", "700", "mdm")
+    s.expect("mkdir -m", p.returncode == 0 and (c.work / "mdm").is_dir())
+
+    p = c.run("basename", "dir/file.txt", ".txt")
+    s.expect("basename suffix", p.stdout.strip() == b"file")
+
+    import gzip as _gz
+    (c.work / "t.gz").write_bytes(_gz.compress(b"HelloGzip"))
+    p = c.run("gzip", "-dc", "t.gz")
+    s.expect("gzip -d", p.stdout == b"HelloGzip", repr(p.stdout))
+    (c.work / "tozip").write_bytes(b"compress-me")
+    p = c.run("gzip", "-c", "tozip")
+    s.expect("gzip compress", p.returncode == 0 and p.stdout[:2] == b"\x1f\x8b")
+
+    p = c.run("sum", stdin="hello")
+    s.expect("sum", p.returncode == 0 and len(p.stdout.split()) >= 2)
+
+    p = c.run("dirname", "/a/b", "/x/y")
+    s.expect("dirname multi", b"/a" in p.stdout and b"/x" in p.stdout, repr(p.stdout))
+
+
 
 
 

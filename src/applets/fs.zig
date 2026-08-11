@@ -256,15 +256,20 @@ pub fn cmdPwd(io: Io, arena: mem.Allocator) !void {
 
 pub fn cmdMkdir(io: Io, args: []const [:0]const u8) !void {
     var parents = false;
+    var mode: ?u32 = null;
     var i: usize = 1;
     while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
-        if (mem.eql(u8, args[i], "-p") or mem.eql(u8, args[i], "--parents")) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-p") or mem.eql(u8, a, "--parents")) {
             parents = true;
-        } else if (mem.eql(u8, args[i], "--")) {
+        } else if (mem.eql(u8, a, "-m") and i + 1 < args.len) {
+            i += 1;
+            mode = std.fmt.parseInt(u32, args[i], 8) catch null;
+        } else if (a.len > 2 and a[0] == '-' and a[1] == 'm') {
+            mode = std.fmt.parseInt(u32, a[2..], 8) catch null;
+        } else if (mem.eql(u8, a, "--")) {
             i += 1;
             break;
-        } else {
-            // ignore unknown for now
         }
     }
     if (i >= args.len) {
@@ -279,11 +284,17 @@ pub fn cmdMkdir(io: Io, args: []const [:0]const u8) !void {
                 try util.writeAll(io, .stderr(), msg);
             };
         } else {
-            Io.Dir.cwd().createDir(io, path, .default_dir) catch |err| {
+            const perms = if (mode) |m| Io.File.Permissions.fromMode(@intCast(m)) else Io.File.Permissions.default_dir;
+            Io.Dir.cwd().createDir(io, path, perms) catch |err| {
                 var buf: [512]u8 = undefined;
                 const msg = try std.fmt.bufPrint(&buf, "mkdir: {s}: {s}\n", .{ path, @errorName(err) });
                 try util.writeAll(io, .stderr(), msg);
+                continue;
             };
+        }
+        if (mode) |m| {
+            const perms2 = Io.File.Permissions.fromMode(@intCast(m));
+            Io.Dir.cwd().setFilePermissions(io, path, perms2, .{}) catch {};
         }
     }
 }
@@ -600,11 +611,18 @@ pub fn cmdLn(io: Io, args: []const [:0]const u8) !void {
 }
 
 pub fn cmdBasename(io: Io, args: []const [:0]const u8) !void {
+    // basename NAME [SUFFIX]
     if (args.len < 2) {
         try util.writeAll(io, .stderr(), "basename: missing operand\n");
         std.process.exit(1);
     }
-    const base = util.basename(args[1]);
+    var base = util.basename(args[1]);
+    if (args.len >= 3) {
+        const suf = args[2];
+        if (suf.len > 0 and base.len >= suf.len and mem.eql(u8, base[base.len - suf.len ..], suf)) {
+            base = base[0 .. base.len - suf.len];
+        }
+    }
     try util.writeAll(io, .stdout(), base);
     try util.writeAll(io, .stdout(), "\n");
 }
@@ -614,19 +632,21 @@ pub fn cmdDirname(io: Io, args: []const [:0]const u8) !void {
         try util.writeAll(io, .stderr(), "dirname: missing operand\n");
         std.process.exit(1);
     }
-    const p = args[1];
-    if (mem.lastIndexOfScalar(u8, p, '/')) |idx| {
-        if (idx == 0) {
-            try util.writeAll(io, .stdout(), "/\n");
+    var ai: usize = 1;
+    while (ai < args.len) : (ai += 1) {
+        const p = args[ai];
+        if (mem.lastIndexOfScalar(u8, p, '/')) |idx| {
+            if (idx == 0) {
+                try util.writeAll(io, .stdout(), "/\n");
+            } else {
+                try util.writeAll(io, .stdout(), p[0..idx]);
+                try util.writeAll(io, .stdout(), "\n");
+            }
         } else {
-            try util.writeAll(io, .stdout(), p[0..idx]);
-            try util.writeAll(io, .stdout(), "\n");
+            try util.writeAll(io, .stdout(), ".\n");
         }
-    } else {
-        try util.writeAll(io, .stdout(), ".\n");
     }
 }
-
 
 pub fn cmdReadlink(io: Io, args: []const [:0]const u8) !void {
     var i: usize = 1;
@@ -1686,6 +1706,222 @@ pub fn cmdStat(io: Io, args: []const [:0]const u8) !void {
     }
     try w.flush();
     if (failed) std.process.exit(1);
+}
+
+
+pub fn cmdGzip(io: Io, args: []const [:0]const u8) !void {
+    // gzip -d|-c [FILE]...  — decompress only for now (inflate gzip)
+    // compress not implemented (keeps binary size down)
+    var decompress = false;
+    var to_stdout = false;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-d") or mem.eql(u8, a, "--decompress") or mem.eql(u8, a, "--uncompress")) {
+            decompress = true;
+        } else if (mem.eql(u8, a, "-c") or mem.eql(u8, a, "--stdout") or mem.eql(u8, a, "--to-stdout")) {
+            to_stdout = true;
+        } else if (mem.eql(u8, a, "-dc") or mem.eql(u8, a, "-cd")) {
+            decompress = true;
+            to_stdout = true;
+        }
+    }
+    if (!decompress) {
+        // compress files (or stdin)
+        if (i >= args.len) {
+            try gzipStream(io, Io.File.stdin(), Io.File.stdout());
+            return;
+        }
+        while (i < args.len) : (i += 1) {
+            const path = args[i];
+            const in_f = Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "gzip: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+            defer in_f.close(io);
+            if (to_stdout) {
+                try gzipStream(io, in_f, Io.File.stdout());
+            } else {
+                var out_name_buf: [Io.Dir.max_path_bytes]u8 = undefined;
+                const out_name = try std.fmt.bufPrint(&out_name_buf, "{s}.gz", .{path});
+                const out_f = Io.Dir.cwd().createFile(io, out_name, .{}) catch |err| {
+                    var buf: [256]u8 = undefined;
+                    const msg = try std.fmt.bufPrint(&buf, "gzip: {s}: {s}\n", .{ out_name, @errorName(err) });
+                    try util.writeAll(io, .stderr(), msg);
+                    continue;
+                };
+                defer out_f.close(io);
+                try gzipStream(io, in_f, out_f);
+                Io.Dir.cwd().deleteFile(io, path) catch {};
+            }
+        }
+        return;
+    }
+    if (i >= args.len) {
+        // stdin -> stdout
+        try gunzipStream(io, Io.File.stdin(), Io.File.stdout());
+        return;
+    }
+    while (i < args.len) : (i += 1) {
+        const path = args[i];
+        const in_f = Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "gzip: {s}: {s}\n", .{ path, @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+            continue;
+        };
+        defer in_f.close(io);
+
+        if (to_stdout) {
+            try gunzipStream(io, in_f, Io.File.stdout());
+        } else {
+            // strip .gz
+            const out_path = if (mem.endsWith(u8, path, ".gz") and path.len > 3)
+                path[0 .. path.len - 3]
+            else
+                path; // write alongside without extension change fallback
+            var out_name_buf: [Io.Dir.max_path_bytes]u8 = undefined;
+            const out_name = if (mem.endsWith(u8, path, ".gz") and path.len > 3)
+                path[0 .. path.len - 3]
+            else blk: {
+                break :blk try std.fmt.bufPrint(&out_name_buf, "{s}.out", .{path});
+            };
+            _ = out_path;
+            const out_f = Io.Dir.cwd().createFile(io, out_name, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "gzip: {s}: {s}\n", .{ out_name, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+            defer out_f.close(io);
+            try gunzipStream(io, in_f, out_f);
+            Io.Dir.cwd().deleteFile(io, path) catch {};
+        }
+    }
+}
+
+pub fn cmdGunzip(io: Io, args: []const [:0]const u8) !void {
+    // gunzip [FILE]... equivalent to gzip -d
+    var argv_buf: [64][:0]const u8 = undefined;
+    var n: usize = 0;
+    argv_buf[n] = "gzip";
+    n += 1;
+    argv_buf[n] = "-d";
+    n += 1;
+    var i: usize = 1;
+    while (i < args.len and n < argv_buf.len) : (i += 1) {
+        argv_buf[n] = args[i];
+        n += 1;
+    }
+    try cmdGzip(io, argv_buf[0..n]);
+}
+
+fn gzipStream(io: Io, in_file: Io.File, out_file: Io.File) !void {
+    const gpa = std.heap.page_allocator;
+    const window = try gpa.alloc(u8, std.compress.flate.max_window_len);
+    defer gpa.free(window);
+
+    var wbuf: [8192]u8 = undefined;
+    const is_stdio = out_file.handle == Io.File.stdout().handle;
+    var file_writer: Io.File.Writer = if (is_stdio)
+        .initStreaming(out_file, io, &wbuf)
+    else
+        .init(out_file, io, &wbuf);
+
+    var compress = try std.compress.flate.Compress.init(
+        &file_writer.interface,
+        window,
+        .gzip,
+        .default,
+    );
+
+    var rbuf: [8192]u8 = undefined;
+    var file_reader: Io.File.Reader = .init(in_file, io, &rbuf);
+    var chunk: [8192]u8 = undefined;
+    while (true) {
+        const n = file_reader.interface.readSliceShort(&chunk) catch break;
+        if (n == 0) break;
+        try compress.writer.writeAll(chunk[0..n]);
+    }
+    try compress.finish();
+    try file_writer.interface.flush();
+}
+
+fn gunzipStream(io: Io, in_file: Io.File, out_file: Io.File) !void {
+    var rbuf: [std.compress.flate.max_window_len]u8 = undefined;
+    var file_reader: Io.File.Reader = .init(in_file, io, &rbuf);
+    var dbuf: [std.compress.flate.max_window_len]u8 = undefined;
+    var decompress: std.compress.flate.Decompress = .init(&file_reader.interface, .gzip, &dbuf);
+
+    var wbuf: [8192]u8 = undefined;
+    const is_stdio = out_file.handle == Io.File.stdout().handle;
+    var writer: Io.File.Writer = if (is_stdio)
+        .initStreaming(out_file, io, &wbuf)
+    else
+        .init(out_file, io, &wbuf);
+
+    var out_chunk: [8192]u8 = undefined;
+    while (true) {
+        const n = decompress.reader.readSliceShort(&out_chunk) catch |err| {
+            if (err == error.EndOfStream) break;
+            return err;
+        };
+        if (n == 0) break;
+        try writer.interface.writeAll(out_chunk[0..n]);
+    }
+    try writer.interface.flush();
+}
+
+pub fn cmdSum(io: Io, args: []const [:0]const u8) !void {
+    // sum [FILE]...  — simple 16-bit checksum and block count (BSD-ish)
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {}
+    const paths: []const [:0]const u8 = if (i >= args.len)
+        &[_][:0]const u8{"-"}
+    else
+        args[i..];
+
+    var wbuf: [256]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    for (paths) |path| {
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "sum: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        var checksum: u16 = 0;
+        var size: u64 = 0;
+        var chunk: [8192]u8 = undefined;
+        while (true) {
+            const n = reader.interface.readSliceShort(&chunk) catch break;
+            if (n == 0) break;
+            for (chunk[0..n]) |b| {
+                // BSD rotate-and-add
+                checksum = (checksum >> 1) +% ((checksum & 1) << 15);
+                checksum +%= b;
+            }
+            size += n;
+        }
+        const blocks = (size + 511) / 512;
+        if (mem.eql(u8, path, "-")) {
+            try w.print("{d:0>5} {d}\n", .{ checksum, blocks });
+        } else {
+            try w.print("{d:0>5} {d} {s}\n", .{ checksum, blocks, path });
+        }
+    }
+    try w.flush();
 }
 
 

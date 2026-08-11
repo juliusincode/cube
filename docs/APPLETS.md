@@ -47,7 +47,7 @@ Global: `cube --help` · `cube --version` · `cube --list`
 |--------|--------|-------|
 | ls | ✅ | long form, classify suffixes |
 | pwd | ✅ | |
-| mkdir | ✅ | `-p` |
+| mkdir | ✅ | `-p`, `-m MODE` |
 | rmdir | ✅ | |
 | rm | ✅ | |
 | touch | ✅ | |
@@ -58,10 +58,13 @@ Global: `cube --help` · `cube --version` · `cube --list`
 | unlink | ✅ | |
 | link | ✅ | hard link TARGET NAME |
 | cksum | ✅ | CRC32 and size |
+| sum | ✅ | BSD-style checksum |
 | stat | ✅ | file metadata summary |
 | unexpand | ✅ | spaces to tabs; `-t`, `-a` |
-| basename | ✅ | |
-| dirname | ✅ | |
+| gzip | ✅ | compress + decompress (`-d`, `-c`) |
+| gunzip | ✅ | alias for `gzip -d` |
+| basename | ✅ | optional SUFFIX strip |
+| dirname | ✅ | multiple paths |
 | readlink | ✅ | |
 | realpath | ✅ | `.` / `..` resolution |
 | find | ✅ | `-name`, `-iname`, `-path`, `-type`, `-maxdepth` |

@@ -247,6 +247,12 @@ fn dispatch(
         try fs.cmdStat(io, argv);
     } else if (mem.eql(u8, applet, "unexpand")) {
         try text.cmdUnexpand(io, argv);
+    } else if (mem.eql(u8, applet, "gzip")) {
+        try fs.cmdGzip(io, argv);
+    } else if (mem.eql(u8, applet, "gunzip")) {
+        try fs.cmdGunzip(io, argv);
+    } else if (mem.eql(u8, applet, "sum")) {
+        try fs.cmdSum(io, argv);
     } else {
         var buf: [256]u8 = undefined;
         const msg = try std.fmt.bufPrint(&buf, "cube: {s}: applet not found\n", .{applet});
@@ -266,7 +272,7 @@ fn printUsage(io: Io) !void {
         \\  --version, -V    Show version
         \\  --list           List all applets (one per line)
         \\
-        \\82 applets in text, filesystem, system, and logic groups.
+        \\85 applets in text, filesystem, system, and logic groups.
         \\Run `cube --list` for the full name list.
         \\
         \\Documentation: README.md, ROADMAP.md, docs/
