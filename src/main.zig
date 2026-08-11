@@ -196,7 +196,7 @@ fn dispatch(
     } else if (mem.eql(u8, applet, "cmp")) {
         try text.cmdCmp(io, argv);
     } else if (mem.eql(u8, applet, "chmod")) {
-        try fs.cmdChmod(io, argv);
+        try fs.cmdChmod(io, arena, argv);
     } else if (mem.eql(u8, applet, "nproc")) {
         try sys.cmdNproc(io, argv);
     } else if (mem.eql(u8, applet, "sync")) {
@@ -235,6 +235,18 @@ fn dispatch(
         try text.cmdFmt(io, argv);
     } else if (mem.eql(u8, applet, "arch")) {
         try sys.cmdArch(io, argv);
+    } else if (mem.eql(u8, applet, "dd")) {
+        try fs.cmdDd(io, argv);
+    } else if (mem.eql(u8, applet, "install")) {
+        try fs.cmdInstall(io, argv);
+    } else if (mem.eql(u8, applet, "link")) {
+        try fs.cmdLink(io, argv);
+    } else if (mem.eql(u8, applet, "cksum")) {
+        try fs.cmdCksum(io, argv);
+    } else if (mem.eql(u8, applet, "stat")) {
+        try fs.cmdStat(io, argv);
+    } else if (mem.eql(u8, applet, "unexpand")) {
+        try text.cmdUnexpand(io, argv);
     } else {
         var buf: [256]u8 = undefined;
         const msg = try std.fmt.bufPrint(&buf, "cube: {s}: applet not found\n", .{applet});
@@ -254,7 +266,7 @@ fn printUsage(io: Io) !void {
         \\  --version, -V    Show version
         \\  --list           List all applets (one per line)
         \\
-        \\76 applets in text, filesystem, system, and logic groups.
+        \\82 applets in text, filesystem, system, and logic groups.
         \\Run `cube --list` for the full name list.
         \\
         \\Documentation: README.md, ROADMAP.md, docs/

@@ -54,17 +54,23 @@ Global: `cube --help` · `cube --version` · `cube --list`
 | cp | ✅ | |
 | mv | ✅ | |
 | ln | ✅ | `-s` |
-| chmod | ✅ | octal modes only |
+| chmod | ✅ | octal modes; `-R` recursive |
 | unlink | ✅ | |
+| link | ✅ | hard link TARGET NAME |
+| cksum | ✅ | CRC32 and size |
+| stat | ✅ | file metadata summary |
+| unexpand | ✅ | spaces to tabs; `-t`, `-a` |
 | basename | ✅ | |
 | dirname | ✅ | |
 | readlink | ✅ | |
 | realpath | ✅ | `.` / `..` resolution |
-| find | ✅ | `-name`, `-type`, `-maxdepth` |
+| find | ✅ | `-name`, `-iname`, `-path`, `-type`, `-maxdepth` |
 | du | ✅ | `-s -h` |
 | df | ✅ | `-h` |
 | mktemp | ✅ | `-d`, `XXXXXX` |
 | truncate | ✅ | `-s` with k/m/g |
+| dd | ✅ | `if=` `of=` `bs=` `count=` `skip=` `seek=` |
+| install | ✅ | `-m MODE`, `-d` directories |
 
 ## System
 

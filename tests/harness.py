@@ -405,6 +405,37 @@ def test_text(c: Cube, s: Suite) -> None:
 
     p = c.run("arch")
     s.expect("arch", p.returncode == 0 and len(p.stdout.strip()) > 0)
+    (c.work / "Mix.TXT").write_text("x")
+    p = c.run("find", ".", "-iname", "*.txt")
+    s.expect("find -iname", b"Mix.TXT" in p.stdout or b"Mix.txt" in p.stdout.lower(), repr(p.stdout))
+
+    (c.work / "dd_in").write_bytes(b"ABCDEFGH")
+    p = c.run("dd", "if=dd_in", "of=dd_out", "bs=4", "count=1")
+    s.expect("dd copy", p.returncode == 0 and (c.work / "dd_out").read_bytes() == b"ABCD")
+
+    (c.work / "ins_src").write_text("bin")
+    p = c.run("install", "-m", "644", "ins_src", "ins_dst")
+    s.expect("install", p.returncode == 0 and (c.work / "ins_dst").is_file())
+    (c.work / "ch_dir").mkdir(exist_ok=True)
+    (c.work / "ch_dir" / "f").write_text("x")
+    p = c.run("chmod", "-R", "700", "ch_dir")
+    s.expect("chmod -R", p.returncode == 0)
+
+    (c.work / "lnk_a").write_text("hi")
+    p = c.run("link", "lnk_a", "lnk_b")
+    s.expect("link", p.returncode == 0 and (c.work / "lnk_b").is_file())
+
+    p = c.run("cksum", stdin="hello")
+    s.expect("cksum", p.returncode == 0 and len(p.stdout.split()) >= 2)
+    (c.work / "stf").write_text("hi")
+    p = c.run("stat", "stf")
+    s.expect("stat", p.returncode == 0 and b"Size:" in p.stdout)
+
+    p = c.run("unexpand", "-t", "4", stdin="    x\n")
+    s.expect("unexpand", p.returncode == 0 and b"\t" in p.stdout)
+
+
+
 
 
 

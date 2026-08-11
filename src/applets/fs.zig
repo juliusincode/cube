@@ -661,6 +661,8 @@ pub fn cmdFind(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
     defer paths.deinit(arena);
 
     var name_pat: ?[]const u8 = null;
+    var name_icase = false;
+    var path_pat: ?[]const u8 = null;
     var type_filter: ?u8 = null; // 'f', 'd', 'l'
     var maxdepth: ?usize = null;
 
@@ -675,6 +677,14 @@ pub fn cmdFind(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
         if (mem.eql(u8, a, "-name") and i + 1 < args.len) {
             i += 1;
             name_pat = args[i];
+            name_icase = false;
+        } else if (mem.eql(u8, a, "-iname") and i + 1 < args.len) {
+            i += 1;
+            name_pat = args[i];
+            name_icase = true;
+        } else if (mem.eql(u8, a, "-path") and i + 1 < args.len) {
+            i += 1;
+            path_pat = args[i];
         } else if (mem.eql(u8, a, "-type") and i + 1 < args.len) {
             i += 1;
             if (args[i].len > 0) type_filter = args[i][0];
@@ -682,7 +692,6 @@ pub fn cmdFind(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
             i += 1;
             maxdepth = std.fmt.parseInt(usize, args[i], 10) catch null;
         } else if (a[0] != '-') {
-            // extra path mid-expression: treat as path
             try paths.append(arena, a);
         }
     }
@@ -697,6 +706,8 @@ pub fn cmdFind(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
 
     const opts = FindOpts{
         .name_pat = name_pat,
+        .name_icase = name_icase,
+        .path_pat = path_pat,
         .type_filter = type_filter,
         .maxdepth = maxdepth,
     };
@@ -709,6 +720,8 @@ pub fn cmdFind(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
 
 const FindOpts = struct {
     name_pat: ?[]const u8,
+    name_icase: bool = false,
+    path_pat: ?[]const u8 = null,
     type_filter: ?u8,
     maxdepth: ?usize,
 };
@@ -729,7 +742,7 @@ fn findWalk(
         return;
     };
 
-    if (findMatch(util.basename(path), st.kind, opts)) {
+    if (findMatch(path, util.basename(path), st.kind, opts)) {
         try w.writeAll(path);
         try w.writeAll("\n");
     }
@@ -763,7 +776,7 @@ fn findWalk(
 }
 
 
-fn findMatch(name: []const u8, kind: Io.File.Kind, opts: FindOpts) bool {
+fn findMatch(full_path: []const u8, name: []const u8, kind: Io.File.Kind, opts: FindOpts) bool {
     if (opts.type_filter) |tf| {
         const ok = switch (tf) {
             'f' => kind == .file,
@@ -778,9 +791,28 @@ fn findMatch(name: []const u8, kind: Io.File.Kind, opts: FindOpts) bool {
         if (!ok) return false;
     }
     if (opts.name_pat) |pat| {
-        if (!globMatch(pat, name)) return false;
+        if (opts.name_icase) {
+            if (!globMatchIgnoreCase(pat, name)) return false;
+        } else if (!globMatch(pat, name)) return false;
+    }
+    if (opts.path_pat) |pat| {
+        if (!globMatch(pat, full_path)) return false;
     }
     return true;
+}
+
+fn globMatchIgnoreCase(pattern: []const u8, text: []const u8) bool {
+    // Lowercase ASCII copies on stack for modest lengths
+    var pb: [512]u8 = undefined;
+    var tb: [512]u8 = undefined;
+    if (pattern.len > pb.len or text.len > tb.len) return globMatch(pattern, text);
+    for (pattern, 0..) |c, j| {
+        pb[j] = if (c >= 'A' and c <= 'Z') c + 32 else c;
+    }
+    for (text, 0..) |c, j| {
+        tb[j] = if (c >= 'A' and c <= 'Z') c + 32 else c;
+    }
+    return globMatch(pb[0..pattern.len], tb[0..text.len]);
 }
 
 /// Simple glob: * (any sequence), ? (single char). No ** or character classes.
@@ -1150,11 +1182,14 @@ fn resolvePath(io: Io, arena: mem.Allocator, path: []const u8) ![]u8 {
 }
 
 
-pub fn cmdChmod(io: Io, args: []const [:0]const u8) !void {
-    // chmod MODE FILE...  (numeric mode only, e.g. 755 or 0755)
+pub fn cmdChmod(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
+    // chmod [-R] MODE FILE...  (numeric mode only, e.g. 755 or 0755)
+    var recursive = false;
     var i: usize = 1;
     while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
-        // ignore flags for now (-R later)
+        for (args[i][1..]) |c| {
+            if (c == 'R' or c == 'r') recursive = true;
+        }
     }
     if (i >= args.len) {
         try util.writeAll(io, .stderr(), "chmod: missing operand\n");
@@ -1175,15 +1210,48 @@ pub fn cmdChmod(io: Io, args: []const [:0]const u8) !void {
 
     var failed = false;
     while (i < args.len) : (i += 1) {
-        Io.Dir.cwd().setFilePermissions(io, args[i], perms, .{}) catch |err| {
-            var buf: [256]u8 = undefined;
-            const msg = try std.fmt.bufPrint(&buf, "chmod: {s}: {s}\n", .{ args[i], @errorName(err) });
-            try util.writeAll(io, .stderr(), msg);
-            failed = true;
-        };
+        if (recursive) {
+            chmodRecursive(io, arena, args[i], perms, &failed) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "chmod: {s}: {s}\n", .{ args[i], @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                failed = true;
+            };
+        } else {
+            Io.Dir.cwd().setFilePermissions(io, args[i], perms, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "chmod: {s}: {s}\n", .{ args[i], @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                failed = true;
+            };
+        }
     }
     if (failed) std.process.exit(1);
 }
+
+fn chmodRecursive(io: Io, arena: mem.Allocator, path: []const u8, perms: Io.File.Permissions, failed: *bool) !void {
+    Io.Dir.cwd().setFilePermissions(io, path, perms, .{}) catch |err| {
+        var buf: [256]u8 = undefined;
+        const msg = try std.fmt.bufPrint(&buf, "chmod: {s}: {s}\n", .{ path, @errorName(err) });
+        try util.writeAll(io, .stderr(), msg);
+        failed.* = true;
+    };
+
+    const st = Io.Dir.cwd().statFile(io, path, .{ .follow_symlinks = false }) catch return;
+    if (st.kind != .directory) return;
+
+    var dir = Io.Dir.cwd().openDir(io, path, .{ .iterate = true }) catch return;
+    defer dir.close(io);
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        if (mem.eql(u8, entry.name, ".") or mem.eql(u8, entry.name, "..")) continue;
+        const child = try std.fmt.allocPrint(arena, "{s}/{s}", .{ path, entry.name });
+        defer arena.free(child);
+        try chmodRecursive(io, arena, child, perms, failed);
+    }
+}
+
+
 
 
 pub fn cmdTruncate(io: Io, args: []const [:0]const u8) !void {
@@ -1278,6 +1346,345 @@ pub fn cmdUnlink(io: Io, args: []const [:0]const u8) !void {
             failed = true;
         };
     }
+    if (failed) std.process.exit(1);
+}
+
+
+pub fn cmdDd(io: Io, args: []const [:0]const u8) !void {
+    // dd [if=FILE] [of=FILE] [bs=N] [count=N] [skip=N] [seek=N]
+    var if_path: ?[]const u8 = null;
+    var of_path: ?[]const u8 = null;
+    var bs: usize = 512;
+    var count: ?usize = null;
+    var skip_blocks: usize = 0;
+    var seek_blocks: usize = 0;
+
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        const a = args[i];
+        if (mem.startsWith(u8, a, "if=")) {
+            if_path = a[3..];
+        } else if (mem.startsWith(u8, a, "of=")) {
+            of_path = a[3..];
+        } else if (mem.startsWith(u8, a, "bs=")) {
+            bs = parseDdSize(a[3..]) catch 512;
+        } else if (mem.startsWith(u8, a, "count=")) {
+            count = std.fmt.parseInt(usize, a[6..], 10) catch null;
+        } else if (mem.startsWith(u8, a, "skip=")) {
+            skip_blocks = std.fmt.parseInt(usize, a[5..], 10) catch 0;
+        } else if (mem.startsWith(u8, a, "seek=")) {
+            seek_blocks = std.fmt.parseInt(usize, a[5..], 10) catch 0;
+        }
+    }
+    if (bs == 0) bs = 512;
+
+    const in_file = if (if_path) |p|
+        if (mem.eql(u8, p, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, p, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "dd: {s}: {s}\n", .{ p, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                std.process.exit(1);
+            }
+    else
+        Io.File.stdin();
+    defer if (if_path) |p| {
+        if (!mem.eql(u8, p, "-")) in_file.close(io);
+    };
+
+    const out_file = if (of_path) |p|
+        if (mem.eql(u8, p, "-"))
+            Io.File.stdout()
+        else
+            Io.Dir.cwd().createFile(io, p, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "dd: {s}: {s}\n", .{ p, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                std.process.exit(1);
+            }
+    else
+        Io.File.stdout();
+    defer if (of_path) |p| {
+        if (!mem.eql(u8, p, "-")) out_file.close(io);
+    };
+
+    // skip input blocks
+    var skip_left = skip_blocks * bs;
+    var discard: [4096]u8 = undefined;
+    while (skip_left > 0) {
+        const n = @min(skip_left, discard.len);
+        const got = blk: {
+            var rbuf: [4096]u8 = undefined;
+            var reader: Io.File.Reader = .init(in_file, io, &rbuf);
+            break :blk reader.interface.readSliceShort(discard[0..n]) catch 0;
+        };
+        if (got == 0) break;
+        skip_left -|= got;
+    }
+
+    // seek on output via positional writes
+    var out_off: u64 = @as(u64, @intCast(seek_blocks)) *% @as(u64, @intCast(bs));
+    const use_positional = (of_path != null and !mem.eql(u8, of_path.?, "-") and seek_blocks > 0);
+
+    var records_in: usize = 0;
+    var records_out: usize = 0;
+    var bytes_out: u64 = 0;
+    var blocks_done: usize = 0;
+
+    const gpa = std.heap.page_allocator;
+    const block = try gpa.alloc(u8, bs);
+    defer gpa.free(block);
+
+    while (true) {
+        if (count) |c| {
+            if (blocks_done >= c) break;
+        }
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(in_file, io, &rbuf);
+        // read up to bs bytes
+        var got: usize = 0;
+        while (got < bs) {
+            const n = reader.interface.readSliceShort(block[got..]) catch break;
+            if (n == 0) break;
+            got += n;
+        }
+        if (got == 0) break;
+        records_in += 1;
+        blocks_done += 1;
+
+        if (use_positional) {
+            out_file.writePositionalAll(io, block[0..got], out_off) catch {};
+            out_off += got;
+        } else {
+            var wbuf: [8192]u8 = undefined;
+            var writer: Io.File.Writer = .initStreaming(out_file, io, &wbuf);
+            writer.interface.writeAll(block[0..got]) catch {};
+            writer.interface.flush() catch {};
+        }
+        records_out += 1;
+        bytes_out += got;
+        if (got < bs) break; // partial last block
+    }
+
+    // status to stderr
+    var sbuf: [128]u8 = undefined;
+    const status = try std.fmt.bufPrint(&sbuf, "{d}+0 records in\n{d}+0 records out\n{d} bytes copied\n", .{
+        records_in, records_out, bytes_out,
+    });
+    try util.writeAll(io, .stderr(), status);
+}
+
+fn parseDdSize(s: []const u8) !usize {
+    if (s.len == 0) return error.Invalid;
+    var end = s.len;
+    var mul: usize = 1;
+    const last = s[s.len - 1];
+    if (last == 'k' or last == 'K') {
+        mul = 1024;
+        end -= 1;
+    } else if (last == 'm' or last == 'M') {
+        mul = 1024 * 1024;
+        end -= 1;
+    } else if (last == 'b') {
+        mul = 512;
+        end -= 1;
+    }
+    return try std.fmt.parseInt(usize, s[0..end], 10) * mul;
+}
+
+pub fn cmdInstall(io: Io, args: []const [:0]const u8) !void {
+    // install [-m MODE] [-d] SRC... DEST  or  install -d DIR...
+    var mode: u32 = 0o755;
+    var dirs_only = false;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-d") or mem.eql(u8, a, "--directory")) {
+            dirs_only = true;
+        } else if (mem.eql(u8, a, "-m") and i + 1 < args.len) {
+            i += 1;
+            mode = std.fmt.parseInt(u32, args[i], 8) catch 0o755;
+        } else if (a.len > 2 and a[0] == '-' and a[1] == 'm') {
+            mode = std.fmt.parseInt(u32, a[2..], 8) catch 0o755;
+        }
+    }
+    if (i >= args.len) {
+        try util.writeAll(io, .stderr(), "install: missing operand\n");
+        std.process.exit(1);
+    }
+
+    const perms = Io.File.Permissions.fromMode(@intCast(mode));
+
+    if (dirs_only) {
+        while (i < args.len) : (i += 1) {
+            Io.Dir.cwd().createDirPath(io, args[i]) catch {};
+            Io.Dir.cwd().setFilePermissions(io, args[i], perms, .{}) catch {};
+        }
+        return;
+    }
+
+    if (i + 1 >= args.len) {
+        try util.writeAll(io, .stderr(), "install: missing destination\n");
+        std.process.exit(1);
+    }
+    const dest = args[args.len - 1];
+    const sources = args[i .. args.len - 1];
+
+    // If multiple sources, dest must be directory
+    const dest_is_dir = blk: {
+        const st = Io.Dir.cwd().statFile(io, dest, .{}) catch break :blk false;
+        break :blk st.kind == .directory;
+    };
+
+    if (sources.len > 1 and !dest_is_dir) {
+        try util.writeAll(io, .stderr(), "install: target is not a directory\n");
+        std.process.exit(1);
+    }
+
+    for (sources) |src| {
+        var dest_buf: [Io.Dir.max_path_bytes]u8 = undefined;
+        const target = if (dest_is_dir or sources.len > 1)
+            try std.fmt.bufPrint(&dest_buf, "{s}/{s}", .{ dest, util.basename(src) })
+        else
+            dest;
+
+        {
+            const src_f = Io.Dir.cwd().openFile(io, src, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "install: {s}: {s}\n", .{ src, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+            defer src_f.close(io);
+            const dst_f = Io.Dir.cwd().createFile(io, target, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "install: {s}: {s}\n", .{ target, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+            defer dst_f.close(io);
+            util.copyFile(io, src_f, dst_f) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "install: {s}: {s}\n", .{ target, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        }
+        Io.Dir.cwd().setFilePermissions(io, target, perms, .{}) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "install: {s}: {s}\n", .{ target, @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+        };
+    }
+}
+
+
+pub fn cmdLink(io: Io, args: []const [:0]const u8) !void {
+    // link TARGET LINK_NAME  — create a hard link
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {}
+    if (i + 1 >= args.len) {
+        try util.writeAll(io, .stderr(), "link: missing operand\n");
+        std.process.exit(1);
+    }
+    const target = args[i];
+    const name = args[i + 1];
+    Io.Dir.cwd().hardLink(target, Io.Dir.cwd(), name, io, .{}) catch |err| {
+        var buf: [256]u8 = undefined;
+        const msg = try std.fmt.bufPrint(&buf, "link: {s}: {s}\n", .{ name, @errorName(err) });
+        try util.writeAll(io, .stderr(), msg);
+        std.process.exit(1);
+    };
+}
+
+pub fn cmdCksum(io: Io, args: []const [:0]const u8) !void {
+    // cksum [FILE]...  — CRC32 and byte count (Zig std.hash.Crc32)
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {}
+    const paths: []const [:0]const u8 = if (i >= args.len)
+        &[_][:0]const u8{"-"}
+    else
+        args[i..];
+
+    var wbuf: [512]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    for (paths) |path| {
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "cksum: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        var crc = std.hash.Crc32.init();
+        var size: u64 = 0;
+        var chunk: [8192]u8 = undefined;
+        while (true) {
+            const n = reader.interface.readSliceShort(&chunk) catch break;
+            if (n == 0) break;
+            crc.update(chunk[0..n]);
+            size += n;
+        }
+        try w.print("{d} {d} {s}\n", .{ crc.final(), size, path });
+    }
+    try w.flush();
+}
+
+
+pub fn cmdStat(io: Io, args: []const [:0]const u8) !void {
+    // stat [FILE]...  — print file status
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        // -c format later
+    }
+    if (i >= args.len) {
+        try util.writeAll(io, .stderr(), "stat: missing operand\n");
+        std.process.exit(1);
+    }
+
+    var wbuf: [2048]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    var failed = false;
+    while (i < args.len) : (i += 1) {
+        const path = args[i];
+        const st = Io.Dir.cwd().statFile(io, path, .{ .follow_symlinks = false }) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "stat: {s}: {s}\n", .{ path, @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+            failed = true;
+            continue;
+        };
+        const mode = st.permissions.toMode();
+        const kind_str: []const u8 = switch (st.kind) {
+            .file => "regular file",
+            .directory => "directory",
+            .sym_link => "symbolic link",
+            .block_device => "block special file",
+            .character_device => "character special file",
+            .named_pipe => "fifo",
+            .unix_domain_socket => "socket",
+            else => "unknown",
+        };
+        const mtime_s = st.mtime.toSeconds();
+        try w.print("  File: {s}\n", .{path});
+        try w.print("  Size: {d}\tBlocks: ?\tIO Block: {d}\t{s}\n", .{ st.size, st.block_size, kind_str });
+        try w.print("Device: ?\tInode: {d}\tLinks: {d}\n", .{ st.inode, st.nlink });
+        try w.print("Access: ({o:0>4}/--------)\tUid: ?\tGid: ?\n", .{mode});
+        try w.print("Modify: {d}\n", .{mtime_s});
+    }
+    try w.flush();
     if (failed) std.process.exit(1);
 }
 
