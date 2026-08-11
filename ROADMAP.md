@@ -1,123 +1,65 @@
-# Roadmap – cube
+# Roadmap
 
-Goal: A **production-capable BusyBox alternative** in pure Zig 0.16+ —
-small, auditable, multi-call, with behaviour aligned to BusyBox/POSIX where practical.
+**Goal:** A production-capable [BusyBox](https://www.busybox.net/)-style multi-call
+binary in pure Zig 0.16+ — small, auditable, Linux-focused.
 
-**Current release:** 0.2.0 — solid core + everyday tools; not full applet parity yet.
+**Current release:** 0.3.0 — 76 applets, integration harness, modular layout.
 
 ## Status legend
-- ✅ implemented (basic / usable)
-- 🟡 partial / incomplete
-- ⬜ planned
-- ❌ intentionally skipped (or later)
 
----
+| Symbol | Meaning |
+|--------|---------|
+| ✅ | Implemented (usable) |
+| 🟡 | Partial / limited flags |
+| ⬜ | Planned |
+| ❌ | Out of scope for now |
 
-## Phase 0 – Foundation (done)
-- ✅ Multi-call dispatch (`argv[0]` / `cube <cmd>`)
-- ✅ Zig 0.16 APIs (`process.Init`, `Io`, `Dir`, `File`)
-- ✅ ReleaseSmall build (~200 KB)
-- ✅ Core applets: echo, true/false, cat, ls, pwd, mkdir, rmdir, rm, touch, cp, mv, ln, sleep, yes, head, tail, wc, basename, dirname, uname, whoami, id, date, clear, seq, test/[
+## Phase 0 — Foundation ✅
 
-## Phase 1 – Robustness & core utilities (mostly done)
-Priority: make the most-used tools solid and practical.
+- Multi-call dispatch (`argv[0]` / `cube <cmd>`)
+- Zig 0.16 `process.Init`, `std.Io`
+- Modules: `util`, `text`, `fs`, `sys`
+- `ReleaseSmall` builds, MIT license, git-ready tree
 
-| Applet           | Status | Next steps |
-|------------------|--------|------------|
-| echo             | ✅     | `-n -e -E`, escapes `\n \t \r` etc. |
-| cat              | ✅     | `-n -b -s`, multi-file, stdin |
-| ls               | ✅     | `-a -A -l -h -d -F` (no `-R` yet) |
-| rm               | ✅     | `-r`/`-R`, `-f` (no `-i` yet) |
-| cp               | ✅     | `-r`/`-R`, multi-src into dir (no `-p` yet) |
-| mv               | ✅     | multi-src → directory |
-| mkdir            | ✅     | `-p` (no `-m` yet) |
-| touch            | ✅     | `-c`, mtime update |
-| ln               | ✅     | `-s -f` |
-| head/tail        | ✅     | `-n -c` both |
-| wc               | ✅     | `-l -w -c`, multi-file totals |
-| test / [         | ✅     | `-f -d -e -z -n -r -w -x -s`, `= != -eq…`, `!` |
-| printf           | ✅     | `%s %d %i %u %x %X %c`, `\n \t \r` |
-| env / printenv   | ✅     | all / single variable |
-| which / type     | ✅/⬜  | `which` done; `type` later |
-| dirname/basename | ✅     | optional suffix support |
+## Phase 1 — Core utilities ✅
 
-**Phase 1 milestone:** All core file tools are everyday-usable and support the most important POSIX/BusyBox flags.
+Everyday filesystem and shell tools: `ls`, `cp`, `mv`, `rm`, `mkdir`, `cat`,
+`echo`, `head`, `tail`, `wc`, `test`, …
 
-## Phase 2 – Text & search (mostly done)
-| Applet       | Status | Notes |
-|--------------|--------|-------|
-| grep         | ✅     | fixed-string; `-i -v -n -r -l -c -q -H -h` |
-| sed          | ✅     | fixed-string `s///` + `g`, `-n` |
-| cut          | ✅     | `-d -f -c` |
-| sort         | ✅     | `-n -r -u` |
-| uniq         | ✅     | `-c -d -u` |
-| tr           | ✅     | `-d`, ranges |
-| rev          | ✅     | |
-| od / hexdump | ⬜     | |
+## Phase 2 — Text processing ✅ (core)
 
-## Phase 3 – System & process (partial)
-| Applet       | Status | Notes |
-|--------------|--------|-------|
-| ps           | ✅     | USER VSZ RSS STAT COMMAND, `-p` |
-| kill         | ✅     | signals by name/number |
-| killall      | ⬜     | |
-| free         | ✅     | `-h` |
-| uptime       | ✅     | |
-| df           | ✅     | `-h` |
-| du           | ✅     | `-s -h` |
-| mount/umount | ⬜     | careful |
-| hostname     | ✅     | |
-| uname        | ✅     | `-a -s -n -r -v -m` |
-| id/whoami    | ✅     | numeric uid/gid |
-| date         | ✅     | `+FORMAT` |
+`grep` (fixed-string), `sed` (fixed `s///`), `sort`, `cut`, `uniq`, `tr`,
+`tee`, `xargs`, `nl`, `tac`, `fold`, `fmt`, `paste`, `expand`, `split`, `shuf`,
+`join`, `comm`, `base64`, `od`, `strings`, …
 
-## Phase 4 – Shell & scripting helpers
-| Applet   | Status | Notes |
-|----------|--------|-------|
-| sh / ash | ❌/⬜  | large – optional later |
-| xargs    | ✅     | `-n -0` |
-| find     | ✅     | `-name` `*`/`?`, `-type f|d|l`, `-maxdepth` |
-| expr     | ⬜     | |
-| test     | 🟡     | expand |
-| printf   | ✅     | |
-| readlink | ✅     | |
-| realpath | ✅     | |
-| mktemp   | ✅     | |
-| install  | ⬜     | |
+## Phase 3 — System introspection ✅ (subset)
 
-## Phase 5 – Networking (optional)
-| Applet    | Status |
-|-----------|--------|
-| ping      | ⬜     |
-| wget/curl | ⬜     |
-| nc        | ⬜     |
-| ifconfig  | ⬜     |
-| netstat   | ⬜     |
+`ps`, `kill`, `free`, `uptime`, `df`, `du`, `uname`, `arch`, `nproc`, `sync`, …
 
-## Phase 6 – Architecture & quality
-- ✅ Applets in modules (`src/applets/{text,fs,sys}.zig`)
-- ✅ Shared helpers (`src/util.zig`)
-- ⬜ Per-applet `--help`
-- ✅ Unit tests (`zig build test`) for pure helpers
-- ⬜ `CONFIG_*`-style compile-time feature toggles
-- ⬜ Further size optimization (ReleaseSmall + strip)
-- ⬜ Man pages / `cube --list`
-- ⬜ Cross-compile examples (musl, aarch64, …)
+## Phase 4 — Next priorities
 
----
-
-## Next concrete steps (order)
-
-1. `sed` (simple `s///`) / richer `grep`
-2. `ps` / `kill`
-3. `xargs` / `mktemp`
-4. Per-applet `--help`
-5. More unit / integration tests
+| Item | Status | Notes |
+|------|--------|-------|
+| Table-driven dispatch | ⬜ | Shared `Context` + handler table |
+| Per-applet `--help` | ⬜ | |
+| Richer `grep` (basic regex) | ⬜ | |
+| `find` `-path` / `-iname` | ⬜ | |
+| `chmod` symbolic modes / `-R` | ⬜ | |
+| `tar` / `gzip` | ⬜ | Large effort |
+| `ash` / shell | ⬜ | Major project |
+| Networking (`wget`, `nc`, …) | ⬜ | |
+| Feature/`CONFIG_*` build flags | ⬜ | Size tuning |
+| CI (build + harness) | ⬜ | |
 
 ## Design principles
-- No C code – pure Zig
-- Prefer small binary size
-- POSIX/BusyBox behaviour where sensible and feasible
-- Error messages in BusyBox style (`applet: msg`)
-- No external dependencies
-- Consistent use of the Zig 0.16 Io API
+
+1. BusyBox behaviour over GNU when they diverge (unless POSIX requires otherwise)
+2. No third-party dependencies in the default build
+3. Prefer correctness and clarity over micro-optimizations
+4. Every new applet: dispatch + `applets_list.zig` + APPLETS.md + harness case when practical
+
+## Non-goals (near term)
+
+- Full SELinux / complex enterprise utilities
+- Windows as a primary target
+- Drop-in replacement for every GNU coreutils flag

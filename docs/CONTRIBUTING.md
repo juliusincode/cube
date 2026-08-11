@@ -1,85 +1,37 @@
-# Adding new applets
+# Contributing
 
-## 1. Choose a module
+## Development setup
 
-| Kind of applet | File |
-|----------------|------|
-| Text / filters | `src/applets/text.zig` |
-| Filesystem | `src/applets/fs.zig` |
-| System / env | `src/applets/sys.zig` |
-| Shared helper | `src/util.zig` |
+```bash
+# Zig 0.16+
+zig build -Doptimize=Debug
+zig build test
+python3 tests/harness.py --cube zig-out/bin/cube
+```
 
-## 2. Write a public function
+## Adding an applet
+
+1. Choose module: `text` / `fs` / `sys` (see [STANDARDS.md](STANDARDS.md)).
+2. Implement `pub fn cmdFoo(io: Io, …) !void`.
+3. Wire the branch in `src/main.zig`.
+4. Insert the name alphabetically in `src/applets_list.zig`.
+5. Update `docs/APPLETS.md` and the help text in `main.zig` if needed.
+6. Prefer a case in `tests/harness.py`.
+
+### Skeleton
 
 ```zig
 pub fn cmdFoo(io: Io, args: []const [:0]const u8) !void {
     // args[0] == "foo"
-    // ...
+    _ = args;
+    try util.writeAll(io, .stdout(), "ok\n");
 }
 ```
 
-Use `util.writeAll` for simple stderr/stdout writes.
+## Commit style
 
-## 3. Register in the dispatcher
+Prefer conventional prefixes: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`.
 
-In `src/main.zig`:
+## License
 
-```zig
-} else if (mem.eql(u8, applet, "foo")) {
-    try text.cmdFoo(io, argv); // or fs. / sys.
-}
-```
-
-## 4. Update help and docs
-
-- Extend the list in `printUsage()` in `main.zig`
-- Set status in `ROADMAP.md` and `docs/APPLETS.md`
-
-## Tips
-
-- Always use `Io.File.Writer.initStreaming` for stdout/stderr.
-- Write errors as `foo: ...\n` to stderr.
-- Use a sensible exit code for missing operands (usually 1).
-- Use the arena allocator for temporary allocations.
-- No global variables; pass everything as parameters.
-- Call `std.process.exit(n)` only when the process must actually terminate.
-
-## Example skeleton
-
-```zig
-pub fn cmdFoo(io: Io, args: []const [:0]const u8) !void {
-    if (args.len < 2) {
-        try util.writeAll(io, .stderr(), "foo: missing operand\n");
-        std.process.exit(1);
-    }
-    // ...
-}
-```
-
-
-## Unit tests
-
-Add `test "name" { ... }` blocks in the same file as the code under test.
-
-```zig
-test "my helper" {
-    try std.testing.expectEqualStrings("x", myHelper("a/x"));
-}
-```
-
-Run all tests:
-
-```bash
-zig build test
-```
-
-
-## Integration tests
-
-```bash
-zig build -Doptimize=ReleaseSmall
-python3 tests/harness.py --cube zig-out/bin/cube
-```
-
-`tests/harness.py` exercises globals and major applets in a temporary
-directory (exit codes, stdout, side effects). Extend it when adding applets.
+By contributing, you agree that your contributions are licensed under the MIT License.

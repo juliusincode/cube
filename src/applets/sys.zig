@@ -526,6 +526,27 @@ pub fn cmdKill(io: Io, args: []const [:0]const u8) !void {
     }
 }
 
+pub fn cmdNproc(io: Io, args: []const [:0]const u8) !void {
+    _ = args;
+    const n = std.Thread.getCpuCount() catch 1;
+    var buf: [32]u8 = undefined;
+    const s = try std.fmt.bufPrint(&buf, "{d}\n", .{n});
+    try util.writeAll(io, .stdout(), s);
+}
+
+pub fn cmdSync(io: Io, args: []const [:0]const u8) !void {
+    _ = args;
+    std.os.linux.sync();
+    _ = io;
+}
+
+pub fn cmdArch(io: Io, args: []const [:0]const u8) !void {
+    _ = args;
+    const arch = @tagName(builtin.cpu.arch);
+    try util.writeAll(io, .stdout(), arch);
+    try util.writeAll(io, .stdout(), "\n");
+}
+
 pub fn cmdClear(io: Io) !void {
     try util.writeAll(io, .stdout(), "\x1b[2J\x1b[H");
 }

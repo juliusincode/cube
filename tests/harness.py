@@ -315,6 +315,101 @@ def test_text(c: Cube, s: Suite) -> None:
     p = c.run("xargs", "echo", stdin="one\ntwo\n")
     s.expect("xargs echo", b"one" in p.stdout and b"two" in p.stdout, repr(p.stdout))
 
+    p = c.run("base64", "-w", "0", stdin="hello")
+    s.expect("base64 encode", b"aGVsbG8=" in p.stdout, repr(p.stdout))
+    p = c.run("base64", "-d", stdin="aGVsbG8=")
+    s.expect("base64 decode", p.stdout == b"hello", repr(p.stdout))
+
+    p = c.run("md5sum", stdin="hello")
+    s.expect("md5sum hello", b"5d41402abc4b2a76b9719d911017c592" in p.stdout, repr(p.stdout))
+
+    p = c.run("sha256sum", stdin="hello")
+    s.expect(
+        "sha256sum hello",
+        b"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" in p.stdout,
+        repr(p.stdout),
+    )
+
+    (c.work / "cmp_a").write_text("same\n")
+    (c.work / "cmp_b").write_text("same\n")
+    (c.work / "cmp_c").write_text("diff\n")
+    p = c.run("cmp", "cmp_a", "cmp_b")
+    s.expect("cmp equal", p.returncode == 0)
+    p = c.run("cmp", "-s", "cmp_a", "cmp_c")
+    s.expect("cmp differ silent", p.returncode == 1)
+
+    p = c.run("nproc")
+    s.expect("nproc", p.returncode == 0 and p.stdout.strip().isdigit(), repr(p.stdout))
+
+    p = c.run("od", "-A", "n", "-N", "4", stdin="abcd")
+    s.expect("od bytes", b"61" in p.stdout and b"62" in p.stdout, repr(p.stdout))
+
+    (c.work / "chmod_f").write_text("x")
+    p = c.run("chmod", "600", "chmod_f")
+    s.expect("chmod", p.returncode == 0)
+
+    p = c.run("sync")
+    s.expect("sync", p.returncode == 0)
+    p = c.run("nl", stdin="a\nb\n")
+    s.expect("nl numbers", b"1" in p.stdout and b"a" in p.stdout, repr(p.stdout))
+
+    p = c.run("tac", stdin="1\n2\n3\n")
+    s.expect("tac reverse", p.stdout == b"3\n2\n1\n", repr(p.stdout))
+
+    p = c.run("strings", "-n", "4", stdin=b"xx\x00ABCD\x00yy")
+    s.expect("strings", b"ABCD" in p.stdout, repr(p.stdout))
+
+    p = c.run("fold", "-w", "4", stdin="abcdefgh")
+    s.expect("fold", b"abcd" in p.stdout and b"efgh" in p.stdout, repr(p.stdout))
+    (c.work / "pa").write_text("a\nb\n")
+    (c.work / "pb").write_text("1\n2\n")
+    p = c.run("paste", "pa", "pb")
+    s.expect("paste", b"a" in p.stdout and b"1" in p.stdout, repr(p.stdout))
+
+    p = c.run("expand", "-t", "4", stdin="a\tb\n")
+    s.expect("expand", b"a" in p.stdout and b"\t" not in p.stdout, repr(p.stdout))
+
+    p = c.run("factor", "12")
+    s.expect("factor 12", b"2" in p.stdout and b"3" in p.stdout, repr(p.stdout))
+
+    p = c.run("truncate", "-s", "8", "trunc_f")
+    s.expect("truncate", p.returncode == 0 and (c.work / "trunc_f").stat().st_size == 8)
+    p = c.run("expr", "3", "+", "4")
+    s.expect("expr add", b"7" in p.stdout, repr(p.stdout))
+
+    p = c.run("expr", "length", "abcd")
+    s.expect("expr length", b"4" in p.stdout, repr(p.stdout))
+
+    p = c.run("shuf", "-i", "1-3")
+    s.expect("shuf range", p.returncode == 0 and len(p.stdout.splitlines()) == 3)
+
+    (c.work / "split_in").write_text("1\n2\n3\n4\n")
+    p = c.run("split", "-l", "2", "split_in", "sp")
+    s.expect("split", p.returncode == 0 and (c.work / "spaa").is_file())
+
+    (c.work / "ul").write_text("x")
+    p = c.run("unlink", "ul")
+    s.expect("unlink", p.returncode == 0 and not (c.work / "ul").exists())
+    (c.work / "j1").write_text("a 1\nb 2\n")
+    (c.work / "j2").write_text("a x\nb y\n")
+    p = c.run("join", "j1", "j2")
+    s.expect("join keys", b"a" in p.stdout and b"1" in p.stdout and b"x" in p.stdout, repr(p.stdout))
+
+    (c.work / "c1").write_text("a\nb\n")
+    (c.work / "c2").write_text("b\nc\n")
+    p = c.run("comm", "c1", "c2")
+    s.expect("comm", p.returncode == 0 and b"b" in p.stdout, repr(p.stdout))
+
+    p = c.run("fmt", "-w", "20", stdin="one two three four five six")
+    s.expect("fmt", p.returncode == 0 and len(p.stdout) > 0)
+
+    p = c.run("arch")
+    s.expect("arch", p.returncode == 0 and len(p.stdout.strip()) > 0)
+
+
+
+
+
     p = c.run("seq", "1", "3")
     s.expect("seq", p.stdout == b"1\n2\n3\n", repr(p.stdout))
 

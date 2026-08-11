@@ -2,77 +2,69 @@
 
 ## Multi-call dispatch
 
-```
-argv[0]  →  basename  →  applet name
+```text
+argv[0]  →  basename  →  name
                 │
-                ▼
-     name is cube/busybox/bb ?
-                │
-        yes     │     no
-         ▼      │      ▼
-   argv[1] =    │   basename(argv[0])
-   applet       │   = applet
-                ▼
-           dispatch() → applets.*.cmdXxx()
+     name ∈ {cube, busybox, bb} ?
+           yes │ no
+               │  └── applet = basename(argv[0])
+               └── applet = argv[1] (or help if missing)
+                          │
+                          ▼
+                    dispatch(applet)
+                          │
+          ┌───────────────┼───────────────┐
+          ▼               ▼               ▼
+       text.cmd*       fs.cmd*        sys.cmd*
 ```
 
 Symlink example: `ls` → `cube` → applet `ls`.
 
-## Zig 0.16 entry
+## Entry (Zig 0.16)
 
 ```zig
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
-    const io   = init.io;
-    const args = try init.minimal.args.toSlice(arena);
-    // ...
+    const io = init.io;
+    // args, environ from init
 }
 ```
 
-| `Init` field      | Role |
-|-------------------|------|
-| `arena`           | Process-lifetime allocator |
-| `io`              | `std.Io` for all I/O |
-| `minimal.args`    | argv |
-| `environ_map`     | Environment (`env` / `which`) |
+| Field | Role |
+|-------|------|
+| `arena` | Process-lifetime allocator |
+| `io` | `std.Io` for all I/O |
+| args | argv |
+| environ | environment map |
 
 ## Modules (`build.zig`)
 
-Named imports:
-
-| Name | Source |
-|------|--------|
+| Import name | Source |
+|-------------|--------|
 | `util` | `src/util.zig` |
 | `text` | `src/applets/text.zig` |
-| `fs`   | `src/applets/fs.zig` |
-| `sys`  | `src/applets/sys.zig` |
+| `fs` | `src/applets/fs.zig` |
+| `sys` | `src/applets/sys.zig` |
 | `version` | `src/version.zig` |
 | `applets_list` | `src/applets_list.zig` |
 
-`main.zig` imports all four. Applets import `util` only.
+`main.zig` imports all of the above. Applet modules import `util` only.
 
-## I/O notes
+## I/O conventions
 
-- Prefer `Io.File.Writer.initStreaming` for **stdout/stderr** (positional mode overwrites from offset 0).
-- Filesystem calls go through `Io.Dir` / `Io.File` with the `io` handle.
-- Symlink-aware tools (`find -type l`, `readlink`) use `follow_symlinks = false` where needed.
+- Prefer `Io.File.Writer.initStreaming` for stdout/stderr (positional writers restart at offset 0).
+- Pass `io: std.Io` through every operation.
+- Symlink-aware tools use `follow_symlinks = false` where required (`find -type l`, …).
 
-## Error style
+## Errors
 
-```
+```text
 applet: path: Message
 ```
 
-| Exit | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 127 | Unknown applet |
+Unknown applet → stderr + exit **127**.
 
 ## Tests
 
-```bash
-zig build test
-```
-
-`test "…"` blocks live next to the code (`util`, `text`, `fs`, `main`).
+- Unit: `test` blocks next to helpers; `zig build test`
+- Integration: `tests/harness.py` against a built binary

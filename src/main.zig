@@ -187,6 +187,54 @@ fn dispatch(
         try text.cmdXargs(io, arena, argv);
     } else if (mem.eql(u8, applet, "realpath")) {
         try fs.cmdRealpath(io, arena, argv);
+    } else if (mem.eql(u8, applet, "base64")) {
+        try text.cmdBase64(io, argv);
+    } else if (mem.eql(u8, applet, "md5sum")) {
+        try text.cmdMd5sum(io, argv);
+    } else if (mem.eql(u8, applet, "sha256sum")) {
+        try text.cmdSha256sum(io, argv);
+    } else if (mem.eql(u8, applet, "cmp")) {
+        try text.cmdCmp(io, argv);
+    } else if (mem.eql(u8, applet, "chmod")) {
+        try fs.cmdChmod(io, argv);
+    } else if (mem.eql(u8, applet, "nproc")) {
+        try sys.cmdNproc(io, argv);
+    } else if (mem.eql(u8, applet, "sync")) {
+        try sys.cmdSync(io, argv);
+    } else if (mem.eql(u8, applet, "od")) {
+        try text.cmdOd(io, argv);
+    } else if (mem.eql(u8, applet, "nl")) {
+        try text.cmdNl(io, argv);
+    } else if (mem.eql(u8, applet, "tac")) {
+        try text.cmdTac(io, arena, argv);
+    } else if (mem.eql(u8, applet, "strings")) {
+        try text.cmdStrings(io, argv);
+    } else if (mem.eql(u8, applet, "fold")) {
+        try text.cmdFold(io, argv);
+    } else if (mem.eql(u8, applet, "paste")) {
+        try text.cmdPaste(io, arena, argv);
+    } else if (mem.eql(u8, applet, "expand")) {
+        try text.cmdExpand(io, argv);
+    } else if (mem.eql(u8, applet, "factor")) {
+        try text.cmdFactor(io, argv);
+    } else if (mem.eql(u8, applet, "truncate")) {
+        try fs.cmdTruncate(io, argv);
+    } else if (mem.eql(u8, applet, "split")) {
+        try text.cmdSplit(io, argv);
+    } else if (mem.eql(u8, applet, "shuf")) {
+        try text.cmdShuf(io, arena, argv);
+    } else if (mem.eql(u8, applet, "expr")) {
+        try text.cmdExpr(io, argv);
+    } else if (mem.eql(u8, applet, "unlink")) {
+        try fs.cmdUnlink(io, argv);
+    } else if (mem.eql(u8, applet, "join")) {
+        try text.cmdJoin(io, arena, argv);
+    } else if (mem.eql(u8, applet, "comm")) {
+        try text.cmdComm(io, arena, argv);
+    } else if (mem.eql(u8, applet, "fmt")) {
+        try text.cmdFmt(io, argv);
+    } else if (mem.eql(u8, applet, "arch")) {
+        try sys.cmdArch(io, argv);
     } else {
         var buf: [256]u8 = undefined;
         const msg = try std.fmt.bufPrint(&buf, "cube: {s}: applet not found\n", .{applet});
@@ -206,12 +254,8 @@ fn printUsage(io: Io) !void {
         \\  --version, -V    Show version
         \\  --list           List all applets (one per line)
         \\
-        \\Applets (also: cube --list):
-        \\  echo true false cat ls pwd mkdir rmdir rm touch cp mv ln
-        \\  sleep yes head tail wc basename dirname uname whoami id
-        \\  date clear seq test [ printf env printenv which grep
-        \\  sort cut uniq tr rev hostname readlink find du df
-        \\  uptime free sed mktemp kill ps tee xargs realpath
+        \\76 applets in text, filesystem, system, and logic groups.
+        \\Run `cube --list` for the full name list.
         \\
         \\Documentation: README.md, ROADMAP.md, docs/
         \\

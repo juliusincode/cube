@@ -1,62 +1,109 @@
-# Applets – overview
+# Applets
 
-Status: Phase 1–3 (core + text + system subset)
+Status for **cube 0.3.0**. Legend: ✅ usable · 🟡 limited · ⬜ planned.
 
-| Applet     | Status | Important flags / behaviour                         | Notes |
-|------------|--------|-----------------------------------------------------|-------|
-| echo       | ✅     | `-n -e -E`, escapes                                 | |
-| true       | ✅     | exit 0                                              | |
-| false      | ✅     | exit 1                                              | |
-| cat        | ✅     | `-n -b -s`, multi-file, stdin                       | |
-| ls         | ✅     | `-a -A -l -h -d -F`, sorted, multi-path             | owner/group optional |
-| pwd        | ✅     |                                                     | |
-| mkdir      | ✅     | `-p`                                                | `-m` later |
-| rmdir      | ✅     |                                                     | |
-| rm         | ✅     | `-r`/`-R`, `-f`, `-rf`                              | no `-i` |
-| touch      | ✅     | `-c`, create / update mtime                         | |
-| cp         | ✅     | `-r`/`-R`, multi-src → dir                          | no `-p` |
-| mv         | ✅     | rename, multi-src → directory                       | |
-| ln         | ✅     | `-s -f`, hard/symlink                               | |
-| sleep      | ✅     | seconds (float)                                     | |
-| yes        | ✅     |                                                     | |
-| head       | ✅     | `-n`, `-c`, historic `-N`                           | |
-| tail       | ✅     | `-n`, `-c` (buffers input)                          | |
-| wc         | ✅     | `-l -w -c`, multi-file total                        | |
-| basename   | ✅     |                                                     | |
-| dirname    | ✅     |                                                     | |
-| uname      | ✅     | `-a -s -n -r -v -m`                                 | |
-| whoami     | ✅     | numeric uid                                         | name via passwd later |
-| id         | ✅     | uid/gid/euid/egid numeric                           | |
-| date       | ✅     | `+%Y-%m-%d…`, `%s %H %M %S %a %b`                   | UTC |
-| clear      | ✅     | ANSI                                                | |
-| seq        | ✅     | start [step] end                                    | |
-| test / [   | ✅     | file tests, string/int compares, `!`                | no `-a`/`-o` yet |
-| printf     | ✅     | `%s%d%i%u%x%X%c`, escapes `\n\t\r`                  | width/precision later |
-| env        | ✅     | print all variables                                 | `env KEY=VAL cmd` later |
-| printenv   | ✅     | single variable                                     | |
-| which      | ✅     | search `$PATH`                                      | |
-| grep       | ✅     | `-i -v -n -r -l -c -q -H -h` (fixed-string)         | full regex later |
-| sort       | ✅     | `-n -r -u`                                          | |
-| cut        | ✅     | `-d -f -c`                                          | |
-| uniq       | ✅     | `-c -d -u`                                          | |
-| tr         | ✅     | translate / `-d` delete, ranges `a-z`               | |
-| rev        | ✅     | reverse lines                                       | |
-| hostname   | ✅     | print nodename                                      | |
-| readlink   | ✅     | resolve symlink (`-n`)                              | |
-| find       | ✅     | `-name` glob, `-type f|d|l`, `-maxdepth`            | |
-| du         | ✅     | `-s -h`, directory totals                           | |
-| df         | ✅     | `-h`, from `/proc/mounts` + statfs                  | |
-| uptime     | ✅     | uptime + load average                               | |
-| free       | ✅     | `-h`, mem/swap via sysinfo                          | |
-| tee        | ✅     | copy stdin to stdout and files; `-a`                | |
-| xargs      | ✅     | `-n`, `-0`/`-d`, spawn command                      | |
-| realpath   | ✅     | resolve `.` / `..` to absolute path                 | |
-| sed        | ✅     | `s/pat/repl/[g]`, `-n` (fixed-string)               | no regex |
-| mktemp     | ✅     | `-d`, TEMPLATE with `XXXXXX`                        | |
-| kill       | ✅     | `-SIGNAL` / `-n`, `-l`, pid…                        | |
-| ps         | ✅     | PID USER VSZ RSS STAT COMMAND; `-p PID`             | |
+Global: `cube --help` · `cube --version` · `cube --list`
 
-## Legend
-- ✅ usable
-- 🟡 basic; flags / edge cases missing
-- ⬜ not implemented yet
+## Shell and text
+
+| Applet | Status | Notes |
+|--------|--------|-------|
+| echo | ✅ | `-n`, `-e` escapes |
+| printf | ✅ | common format specs |
+| cat | ✅ | multi-file |
+| head | ✅ | `-n`, `-c` |
+| tail | ✅ | `-n`, `-c` |
+| wc | ✅ | `-l -w -c` |
+| grep | ✅ | fixed-string; `-i -v -n -r -l -c -q -H -h` |
+| sed | ✅ | fixed `s/pat/repl/[g]`; `-n` |
+| sort | ✅ | `-n -r -u` |
+| cut | ✅ | `-d -f -c` |
+| uniq | ✅ | `-c -d -u` |
+| tr | ✅ | translate / `-d`; ranges |
+| rev | ✅ | reverse lines |
+| tee | ✅ | `-a` append |
+| xargs | ✅ | `-n`, `-0` / `-d`; spawn |
+| nl | ✅ | `-ba` / `-bt` |
+| tac | ✅ | reverse line order |
+| fold | ✅ | `-w`, `-s` |
+| fmt | ✅ | `-w` paragraph refill |
+| paste | ✅ | `-d` delimiter |
+| expand | ✅ | `-t` tab stops |
+| split | ✅ | `-l` / `-b`; PREFIX |
+| shuf | ✅ | lines or `-i LO-HI` |
+| join | ✅ | sorted files; `-t` |
+| comm | ✅ | `-123` |
+| base64 | ✅ | `-d`, `-w` |
+| od | ✅ | `-A x\|o\|n`, `-N` |
+| strings | ✅ | `-n` |
+| seq | ✅ | start [step] end |
+| yes | ✅ | |
+| expr | ✅ | arithmetic, compares, `length`, `substr` |
+| factor | ✅ | prime factors |
+
+## Filesystem
+
+| Applet | Status | Notes |
+|--------|--------|-------|
+| ls | ✅ | long form, classify suffixes |
+| pwd | ✅ | |
+| mkdir | ✅ | `-p` |
+| rmdir | ✅ | |
+| rm | ✅ | |
+| touch | ✅ | |
+| cp | ✅ | |
+| mv | ✅ | |
+| ln | ✅ | `-s` |
+| chmod | ✅ | octal modes only |
+| unlink | ✅ | |
+| basename | ✅ | |
+| dirname | ✅ | |
+| readlink | ✅ | |
+| realpath | ✅ | `.` / `..` resolution |
+| find | ✅ | `-name`, `-type`, `-maxdepth` |
+| du | ✅ | `-s -h` |
+| df | ✅ | `-h` |
+| mktemp | ✅ | `-d`, `XXXXXX` |
+| truncate | ✅ | `-s` with k/m/g |
+
+## System
+
+| Applet | Status | Notes |
+|--------|--------|-------|
+| uname | ✅ | `-a` and component flags |
+| arch | ✅ | |
+| hostname | ✅ | |
+| whoami | ✅ | |
+| id | ✅ | numeric ids |
+| date | ✅ | `+FORMAT` |
+| clear | ✅ | |
+| sleep | ✅ | |
+| uptime | ✅ | load averages |
+| free | ✅ | `-h` |
+| ps | ✅ | PID USER VSZ RSS STAT COMMAND; `-p` |
+| kill | ✅ | signal name/number; `-l` |
+| nproc | ✅ | |
+| sync | ✅ | |
+| which | ✅ | `$PATH` |
+| env | ✅ | print environment |
+| printenv | ✅ | |
+
+## Logic and checksums
+
+| Applet | Status | Notes |
+|--------|--------|-------|
+| true | ✅ | |
+| false | ✅ | |
+| test / `[` | ✅ | file and string/int tests |
+| md5sum | ✅ | |
+| sha256sum | ✅ | |
+| cmp | ✅ | `-s` |
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Operational failure |
+| 2 | Usage / operand error (selected tools) |
+| 127 | Unknown applet |

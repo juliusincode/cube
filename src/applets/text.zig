@@ -1576,6 +1576,1334 @@ fn runXargsBatch(io: Io, arena: mem.Allocator, cmd: []const [:0]const u8, batch:
 }
 
 
+pub fn cmdBase64(io: Io, args: []const [:0]const u8) !void {
+    // base64 [-d] [-w 0] [FILE]
+    var decode = false;
+    var wrap: usize = 76;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "--")) {
+            i += 1;
+            break;
+        }
+        if (mem.eql(u8, a, "-d") or mem.eql(u8, a, "--decode")) {
+            decode = true;
+        } else if (mem.eql(u8, a, "-w") and i + 1 < args.len) {
+            i += 1;
+            wrap = std.fmt.parseInt(usize, args[i], 10) catch 76;
+        } else if (a.len > 2 and a[0] == '-' and a[1] == 'w') {
+            wrap = std.fmt.parseInt(usize, a[2..], 10) catch 76;
+        }
+    }
+
+    const path: ?[]const u8 = if (i < args.len) args[i] else null;
+    const file = if (path) |p|
+        if (mem.eql(u8, p, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, p, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "base64: {s}: {s}\n", .{ p, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                std.process.exit(1);
+            }
+    else
+        Io.File.stdin();
+    defer if (path) |p| {
+        if (!mem.eql(u8, p, "-")) file.close(io);
+    };
+
+    var rbuf: [8192]u8 = undefined;
+    var reader: Io.File.Reader = .init(file, io, &rbuf);
+
+    // Read all input (bounded for simplicity)
+    var data: std.ArrayListUnmanaged(u8) = .empty;
+    // Use fixed max for stack-friendly approach via arena-less growth on page allocator
+    // Prefer reading in chunks into list with a simple allocator from page_allocator
+    const gpa = std.heap.page_allocator;
+    defer data.deinit(gpa);
+
+    var chunk: [4096]u8 = undefined;
+    while (true) {
+        const n = reader.interface.readSliceShort(&chunk) catch |err| return err;
+        if (n == 0) break;
+        try data.appendSlice(gpa, chunk[0..n]);
+    }
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    if (decode) {
+        // strip whitespace
+        var cleaned: std.ArrayListUnmanaged(u8) = .empty;
+        defer cleaned.deinit(gpa);
+        for (data.items) |c| {
+            if (c != ' ' and c != '\n' and c != '\r' and c != '\t')
+                try cleaned.append(gpa, c);
+        }
+        const max_dec = std.base64.standard.Decoder.calcSizeForSlice(cleaned.items) catch {
+            try util.writeAll(io, .stderr(), "base64: invalid input\n");
+            std.process.exit(1);
+        };
+        const out = try gpa.alloc(u8, max_dec);
+        defer gpa.free(out);
+        std.base64.standard.Decoder.decode(out, cleaned.items) catch {
+            try util.writeAll(io, .stderr(), "base64: invalid input\n");
+            std.process.exit(1);
+        };
+        try w.writeAll(out);
+    } else {
+        const enc_len = std.base64.standard.Encoder.calcSize(data.items.len);
+        const out = try gpa.alloc(u8, enc_len);
+        defer gpa.free(out);
+        const encoded = std.base64.standard.Encoder.encode(out, data.items);
+        if (wrap == 0) {
+            try w.writeAll(encoded);
+            try w.writeAll("\n");
+        } else {
+            var off: usize = 0;
+            while (off < encoded.len) {
+                const end = @min(off + wrap, encoded.len);
+                try w.writeAll(encoded[off..end]);
+                try w.writeAll("\n");
+                off = end;
+            }
+        }
+    }
+    try w.flush();
+}
+
+pub fn cmdMd5sum(io: Io, args: []const [:0]const u8) !void {
+    try hashSum(io, args, .md5);
+}
+
+pub fn cmdSha256sum(io: Io, args: []const [:0]const u8) !void {
+    try hashSum(io, args, .sha256);
+}
+
+const HashKind = enum { md5, sha256 };
+
+fn hashSum(io: Io, args: []const [:0]const u8, kind: HashKind) !void {
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {}
+
+    const paths: []const [:0]const u8 = if (i >= args.len)
+        &[_][:0]const u8{"-"}
+    else
+        args[i..];
+
+    var wbuf: [512]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    for (paths) |path| {
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "{s}: {s}: {s}\n", .{
+                    if (kind == .md5) "md5sum" else "sha256sum",
+                    path,
+                    @errorName(err),
+                });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        var chunk: [8192]u8 = undefined;
+
+        switch (kind) {
+            .md5 => {
+                var h = std.crypto.hash.Md5.init(.{});
+                while (true) {
+                    const n = reader.interface.readSliceShort(&chunk) catch |err| return err;
+                    if (n == 0) break;
+                    h.update(chunk[0..n]);
+                }
+                var digest: [std.crypto.hash.Md5.digest_length]u8 = undefined;
+                h.final(&digest);
+                try writeHex(w, &digest);
+            },
+            .sha256 => {
+                var h = std.crypto.hash.sha2.Sha256.init(.{});
+                while (true) {
+                    const n = reader.interface.readSliceShort(&chunk) catch |err| return err;
+                    if (n == 0) break;
+                    h.update(chunk[0..n]);
+                }
+                var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+                h.final(&digest);
+                try writeHex(w, &digest);
+            },
+        }
+        try w.print("  {s}\n", .{path});
+    }
+    try w.flush();
+}
+
+fn writeHex(w: anytype, bytes: []const u8) !void {
+    const hex = "0123456789abcdef";
+    for (bytes) |b| {
+        try w.writeAll(&.{ hex[b >> 4], hex[b & 0xf] });
+    }
+}
+
+pub fn cmdCmp(io: Io, args: []const [:0]const u8) !void {
+    // cmp [-s] FILE1 FILE2
+    var silent = false;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        for (args[i][1..]) |c| {
+            if (c == 's') silent = true;
+        }
+    }
+    if (i + 1 >= args.len) {
+        try util.writeAll(io, .stderr(), "cmp: missing operand\n");
+        std.process.exit(2);
+    }
+    const p1 = args[i];
+    const p2 = args[i + 1];
+
+    const f1 = if (mem.eql(u8, p1, "-"))
+        Io.File.stdin()
+    else
+        Io.Dir.cwd().openFile(io, p1, .{}) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "cmp: {s}: {s}\n", .{ p1, @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+            std.process.exit(2);
+        };
+    defer if (!mem.eql(u8, p1, "-")) f1.close(io);
+
+    const f2 = Io.Dir.cwd().openFile(io, p2, .{}) catch |err| {
+        var buf: [256]u8 = undefined;
+        const msg = try std.fmt.bufPrint(&buf, "cmp: {s}: {s}\n", .{ p2, @errorName(err) });
+        try util.writeAll(io, .stderr(), msg);
+        std.process.exit(2);
+    };
+    defer f2.close(io);
+
+    var rbuf1: [4096]u8 = undefined;
+    var rbuf2: [4096]u8 = undefined;
+    var r1: Io.File.Reader = .init(f1, io, &rbuf1);
+    var r2: Io.File.Reader = .init(f2, io, &rbuf2);
+
+    var pos: u64 = 1;
+    var line: u64 = 1;
+    var b1: [1]u8 = undefined;
+    var b2: [1]u8 = undefined;
+
+    while (true) {
+        const n1 = r1.interface.readSliceShort(&b1) catch return;
+        const n2 = r2.interface.readSliceShort(&b2) catch return;
+        if (n1 == 0 and n2 == 0) return; // equal
+        if (n1 == 0 or n2 == 0 or b1[0] != b2[0]) {
+            if (!silent) {
+                var buf: [128]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "{s} {s} differ: byte {d}, line {d}\n", .{ p1, p2, pos, line });
+                try util.writeAll(io, .stderr(), msg);
+            }
+            std.process.exit(1);
+        }
+        if (b1[0] == '\n') line += 1;
+        pos += 1;
+    }
+}
+
+
+pub fn cmdOd(io: Io, args: []const [:0]const u8) !void {
+    // od [-A x|o|n] [-t x1|o1|c] [-N N] [FILE]...
+    // Minimal: default address in hex, bytes as hex pairs (like od -An -tx1 simplified with addresses)
+    var addr_base: u8 = 'x'; // x, o, or n (none)
+    var max_bytes: ?usize = null;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-A") and i + 1 < args.len) {
+            i += 1;
+            if (args[i].len > 0) addr_base = args[i][0];
+        } else if (mem.eql(u8, a, "-N") and i + 1 < args.len) {
+            i += 1;
+            max_bytes = std.fmt.parseInt(usize, args[i], 10) catch null;
+        } else if (mem.eql(u8, a, "-t") and i + 1 < args.len) {
+            i += 1; // accept but we always print hex bytes
+        }
+    }
+
+    const path: []const u8 = if (i < args.len) args[i] else "-";
+    const file = if (mem.eql(u8, path, "-"))
+        Io.File.stdin()
+    else
+        Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "od: {s}: {s}\n", .{ path, @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+            std.process.exit(1);
+        };
+    defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+    var rbuf: [4096]u8 = undefined;
+    var reader: Io.File.Reader = .init(file, io, &rbuf);
+    var wbuf: [4096]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    var offset: u64 = 0;
+    var total: usize = 0;
+    var line_buf: [16]u8 = undefined;
+    var line_len: usize = 0;
+
+    while (true) {
+        if (max_bytes) |mb| {
+            if (total >= mb) break;
+        }
+        var tmp: [1]u8 = undefined;
+        const n = reader.interface.readSliceShort(&tmp) catch break;
+        if (n == 0) break;
+        line_buf[line_len] = tmp[0];
+        line_len += 1;
+        total += 1;
+        if (line_len == 16) {
+            try writeOdLine(w, offset, line_buf[0..16], addr_base);
+            offset += 16;
+            line_len = 0;
+        }
+        if (max_bytes) |mb| {
+            if (total >= mb) break;
+        }
+    }
+    if (line_len > 0) {
+        try writeOdLine(w, offset, line_buf[0..line_len], addr_base);
+        offset += line_len;
+    }
+    // final address
+    if (addr_base != 'n') {
+        try writeOdAddr(w, offset, addr_base);
+        try w.writeAll("\n");
+    }
+    try w.flush();
+}
+
+fn writeOdAddr(w: anytype, offset: u64, base: u8) !void {
+    switch (base) {
+        'o' => try w.print("{o:0>7}", .{offset}),
+        'n' => {},
+        else => try w.print("{x:0>7}", .{offset}),
+    }
+}
+
+fn writeOdLine(w: anytype, offset: u64, bytes: []const u8, base: u8) !void {
+    if (base != 'n') {
+        try writeOdAddr(w, offset, base);
+        try w.writeAll(" ");
+    }
+    for (bytes, 0..) |b, idx| {
+        if (idx > 0) try w.writeAll(" ");
+        try w.print("{x:0>2}", .{b});
+    }
+    try w.writeAll("\n");
+}
+
+
+pub fn cmdNl(io: Io, args: []const [:0]const u8) !void {
+    // nl [-b a|t] [FILE]...  — number lines (a=all, t=non-empty; default t)
+    var number_all = false;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-b") and i + 1 < args.len) {
+            i += 1;
+            number_all = (args[i].len > 0 and args[i][0] == 'a');
+        } else if (mem.eql(u8, a, "-ba")) {
+            number_all = true;
+        } else if (mem.eql(u8, a, "-bt")) {
+            number_all = false;
+        }
+    }
+    const paths: []const [:0]const u8 = if (i >= args.len)
+        &[_][:0]const u8{"-"}
+    else
+        args[i..];
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    var line_no: u64 = 1;
+    for (paths) |path| {
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "nl: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        while (true) {
+            const line = (reader.interface.takeDelimiter('\n') catch break) orelse break;
+            if (number_all or line.len > 0) {
+                try w.print("{d:>6}\t{s}\n", .{ line_no, line });
+                line_no += 1;
+            } else {
+                try w.writeAll("\n");
+            }
+        }
+    }
+    try w.flush();
+}
+
+pub fn cmdTac(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
+    // tac [FILE]... — print lines in reverse order
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {}
+    const paths: []const [:0]const u8 = if (i >= args.len)
+        &[_][:0]const u8{"-"}
+    else
+        args[i..];
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    for (paths) |path| {
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "tac: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var lines: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer {
+            for (lines.items) |ln| arena.free(ln);
+            lines.deinit(arena);
+        }
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        while (true) {
+            const line = (reader.interface.takeDelimiter('\n') catch break) orelse break;
+            try lines.append(arena, try arena.dupe(u8, line));
+        }
+        var idx = lines.items.len;
+        while (idx > 0) {
+            idx -= 1;
+            try w.writeAll(lines.items[idx]);
+            try w.writeAll("\n");
+        }
+    }
+    try w.flush();
+}
+
+pub fn cmdStrings(io: Io, args: []const [:0]const u8) !void {
+    // strings [-n N] [FILE]...  — printable sequences (min length N, default 4)
+    var min_len: usize = 4;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-n") and i + 1 < args.len) {
+            i += 1;
+            min_len = std.fmt.parseInt(usize, args[i], 10) catch 4;
+        } else if (a.len > 2 and a[0] == '-' and a[1] == 'n') {
+            min_len = std.fmt.parseInt(usize, a[2..], 10) catch 4;
+        }
+    }
+    const paths: []const [:0]const u8 = if (i >= args.len)
+        &[_][:0]const u8{"-"}
+    else
+        args[i..];
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    for (paths) |path| {
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "strings: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        var acc: [4096]u8 = undefined;
+        var acc_len: usize = 0;
+
+        while (true) {
+            var tmp: [1]u8 = undefined;
+            const n = reader.interface.readSliceShort(&tmp) catch break;
+            if (n == 0) break;
+            const c = tmp[0];
+            if (c >= 32 and c < 127) {
+                if (acc_len < acc.len) {
+                    acc[acc_len] = c;
+                    acc_len += 1;
+                }
+            } else {
+                if (acc_len >= min_len) {
+                    try w.writeAll(acc[0..acc_len]);
+                    try w.writeAll("\n");
+                }
+                acc_len = 0;
+            }
+        }
+        if (acc_len >= min_len) {
+            try w.writeAll(acc[0..acc_len]);
+            try w.writeAll("\n");
+        }
+    }
+    try w.flush();
+}
+
+pub fn cmdFold(io: Io, args: []const [:0]const u8) !void {
+    // fold [-w WIDTH] [-s] [FILE]...
+    var width: usize = 80;
+    var break_spaces = false;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-w") and i + 1 < args.len) {
+            i += 1;
+            width = std.fmt.parseInt(usize, args[i], 10) catch 80;
+        } else if (a.len > 2 and a[0] == '-' and a[1] == 'w') {
+            width = std.fmt.parseInt(usize, a[2..], 10) catch 80;
+        } else if (mem.eql(u8, a, "-s")) {
+            break_spaces = true;
+        }
+    }
+    if (width == 0) width = 80;
+
+    const paths: []const [:0]const u8 = if (i >= args.len)
+        &[_][:0]const u8{"-"}
+    else
+        args[i..];
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    for (paths) |path| {
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "fold: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        var col: usize = 0;
+        var line_acc: [4096]u8 = undefined;
+        var line_len: usize = 0;
+
+        while (true) {
+            var tmp: [1]u8 = undefined;
+            const n = reader.interface.readSliceShort(&tmp) catch break;
+            if (n == 0) break;
+            const c = tmp[0];
+            if (c == '\n') {
+                try w.writeAll(line_acc[0..line_len]);
+                try w.writeAll("\n");
+                line_len = 0;
+                col = 0;
+                continue;
+            }
+            if (col >= width) {
+                if (break_spaces) {
+                    // find last space in line_acc
+                    var sp: ?usize = null;
+                    var j: usize = line_len;
+                    while (j > 0) {
+                        j -= 1;
+                        if (line_acc[j] == ' ' or line_acc[j] == '\t') {
+                            sp = j;
+                            break;
+                        }
+                    }
+                    if (sp) |s| {
+                        try w.writeAll(line_acc[0..s]);
+                        try w.writeAll("\n");
+                        const rest = line_acc[s + 1 .. line_len];
+                        @memcpy(line_acc[0..rest.len], rest);
+                        line_len = rest.len;
+                        col = line_len;
+                    } else {
+                        try w.writeAll(line_acc[0..line_len]);
+                        try w.writeAll("\n");
+                        line_len = 0;
+                        col = 0;
+                    }
+                } else {
+                    try w.writeAll(line_acc[0..line_len]);
+                    try w.writeAll("\n");
+                    line_len = 0;
+                    col = 0;
+                }
+            }
+            if (line_len < line_acc.len) {
+                line_acc[line_len] = c;
+                line_len += 1;
+                col += 1;
+            }
+        }
+        if (line_len > 0) {
+            try w.writeAll(line_acc[0..line_len]);
+        }
+    }
+    try w.flush();
+}
+
+
+pub fn cmdPaste(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
+    // paste [-d delim] FILE...
+    var delim: []const u8 = "\t";
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-d") and i + 1 < args.len) {
+            i += 1;
+            delim = args[i];
+            if (delim.len == 0) delim = "\t";
+        }
+    }
+    if (i >= args.len) {
+        try util.writeAll(io, .stderr(), "paste: missing file operand\n");
+        std.process.exit(1);
+    }
+
+    const nfiles = args.len - i;
+    var files = try arena.alloc(?Io.File, nfiles);
+    defer {
+        for (files) |f| {
+            if (f) |ff| ff.close(io);
+        }
+    }
+    var readers = try arena.alloc(?Io.File.Reader, nfiles);
+    var rbufs = try arena.alloc([4096]u8, nfiles);
+    var done = try arena.alloc(bool, nfiles);
+    @memset(done, false);
+
+    for (args[i..], 0..) |path, idx| {
+        if (mem.eql(u8, path, "-")) {
+            files[idx] = Io.File.stdin();
+        } else {
+            files[idx] = Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "paste: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                files[idx] = null;
+                done[idx] = true;
+                continue;
+            };
+        }
+        readers[idx] = Io.File.Reader.init(files[idx].?, io, &rbufs[idx]);
+    }
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    while (true) {
+        var any = false;
+        for (done) |d| {
+            if (!d) any = true;
+        }
+        if (!any) break;
+
+        var first = true;
+        for (0..nfiles) |idx| {
+            if (!first) {
+                // cycle delim chars like paste
+                const di = (idx - 1) % delim.len;
+                try w.writeAll(delim[di .. di + 1]);
+            }
+            first = false;
+            if (done[idx] or readers[idx] == null) continue;
+            const line = (readers[idx].?.interface.takeDelimiter('\n') catch null) orelse {
+                done[idx] = true;
+                continue;
+            };
+            try w.writeAll(line);
+        }
+        try w.writeAll("\n");
+    }
+    try w.flush();
+}
+
+pub fn cmdExpand(io: Io, args: []const [:0]const u8) !void {
+    // expand [-t N] [FILE]...  — tabs to spaces (default tab stops every 8)
+    var tab: usize = 8;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-t") and i + 1 < args.len) {
+            i += 1;
+            tab = std.fmt.parseInt(usize, args[i], 10) catch 8;
+        } else if (a.len > 2 and a[0] == '-' and a[1] == 't') {
+            tab = std.fmt.parseInt(usize, a[2..], 10) catch 8;
+        }
+    }
+    if (tab == 0) tab = 8;
+
+    const paths: []const [:0]const u8 = if (i >= args.len)
+        &[_][:0]const u8{"-"}
+    else
+        args[i..];
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    for (paths) |path| {
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "expand: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        var col: usize = 0;
+        while (true) {
+            var tmp: [1]u8 = undefined;
+            const n = reader.interface.readSliceShort(&tmp) catch break;
+            if (n == 0) break;
+            const c = tmp[0];
+            if (c == '\t') {
+                const spaces = tab - (col % tab);
+                var s: usize = 0;
+                while (s < spaces) : (s += 1) {
+                    try w.writeAll(" ");
+                    col += 1;
+                }
+            } else {
+                try w.writeAll(&.{c});
+                if (c == '\n') col = 0 else col += 1;
+            }
+        }
+    }
+    try w.flush();
+}
+
+pub fn cmdFactor(io: Io, args: []const [:0]const u8) !void {
+    // factor [NUMBER]...
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {}
+
+    var wbuf: [1024]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    if (i >= args.len) {
+        // read numbers from stdin
+        var rbuf: [4096]u8 = undefined;
+        var reader: Io.File.Reader = .init(.stdin(), io, &rbuf);
+        while (true) {
+            const line = (reader.interface.takeDelimiter('\n') catch break) orelse break;
+            var it = mem.tokenizeAny(u8, line, " \t");
+            while (it.next()) |tok| {
+                try factorOne(w, tok);
+            }
+        }
+    } else {
+        while (i < args.len) : (i += 1) {
+            try factorOne(w, args[i]);
+        }
+    }
+    try w.flush();
+}
+
+fn factorOne(w: anytype, tok: []const u8) !void {
+    const n = std.fmt.parseInt(u64, tok, 10) catch {
+        try w.print("{s}: not a number\n", .{tok});
+        return;
+    };
+    try w.print("{d}:", .{n});
+    var x = n;
+    if (x <= 1) {
+        try w.writeAll("\n");
+        return;
+    }
+    // factor out 2s
+    while (x % 2 == 0) {
+        try w.writeAll(" 2");
+        x /= 2;
+    }
+    var f: u64 = 3;
+    while (f * f <= x) : (f += 2) {
+        while (x % f == 0) {
+            try w.print(" {d}", .{f});
+            x /= f;
+        }
+    }
+    if (x > 1) try w.print(" {d}", .{x});
+    try w.writeAll("\n");
+}
+
+
+pub fn cmdSplit(io: Io, args: []const [:0]const u8) !void {
+    // split [-l LINES] [-b SIZE] [FILE [PREFIX]]
+    // Default: -l 1000, prefix "x"
+    var lines_per: ?usize = 1000;
+    var bytes_per: ?usize = null;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-l") and i + 1 < args.len) {
+            i += 1;
+            lines_per = std.fmt.parseInt(usize, args[i], 10) catch 1000;
+            bytes_per = null;
+        } else if (mem.eql(u8, a, "-b") and i + 1 < args.len) {
+            i += 1;
+            bytes_per = parseSplitSize(args[i]) catch {
+                try util.writeAll(io, .stderr(), "split: invalid size\n");
+                std.process.exit(1);
+            };
+            lines_per = null;
+        }
+    }
+    const path: []const u8 = if (i < args.len) args[i] else "-";
+    if (i < args.len) i += 1;
+    const prefix: []const u8 = if (i < args.len) args[i] else "x";
+
+    const file = if (mem.eql(u8, path, "-"))
+        Io.File.stdin()
+    else
+        Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "split: {s}: {s}\n", .{ path, @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+            std.process.exit(1);
+        };
+    defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+    var rbuf: [8192]u8 = undefined;
+    var reader: Io.File.Reader = .init(file, io, &rbuf);
+
+    var part: usize = 0;
+    var cur_lines: usize = 0;
+    var cur_bytes: usize = 0;
+    var out_file: ?Io.File = null;
+    defer if (out_file) |f| f.close(io);
+
+    const openPart = struct {
+        fn call(io2: Io, pref: []const u8, p: usize, current: *?Io.File) !void {
+            if (current.*) |f| f.close(io2);
+            var name_buf: [256]u8 = undefined;
+            // xaa, xab, ... classic two-letter suffix after exhausting would need more; keep simple aa-zz then numeric
+            const a: u8 = @intCast('a' + (p / 26) % 26);
+            const b: u8 = @intCast('a' + (p % 26));
+            const name = try std.fmt.bufPrint(&name_buf, "{s}{c}{c}", .{ pref, a, b });
+            current.* = try Io.Dir.cwd().createFile(io2, name, .{});
+        }
+    }.call;
+
+    try openPart(io, prefix, part, &out_file);
+
+    if (bytes_per) |bp| {
+        var chunk: [4096]u8 = undefined;
+        while (true) {
+            const want = @min(chunk.len, bp - cur_bytes);
+            const n = reader.interface.readSliceShort(chunk[0..want]) catch break;
+            if (n == 0) break;
+            var fbuf: [4096]u8 = undefined;
+            var fw: Io.File.Writer = .initStreaming(out_file.?, io, &fbuf);
+            try fw.interface.writeAll(chunk[0..n]);
+            try fw.interface.flush();
+            cur_bytes += n;
+            if (cur_bytes >= bp) {
+                part += 1;
+                cur_bytes = 0;
+                try openPart(io, prefix, part, &out_file);
+            }
+        }
+    } else {
+        const lp = lines_per.?;
+        while (true) {
+            const line = (reader.interface.takeDelimiter('\n') catch break) orelse break;
+            var fbuf: [4096]u8 = undefined;
+            var fw: Io.File.Writer = .initStreaming(out_file.?, io, &fbuf);
+            try fw.interface.writeAll(line);
+            try fw.interface.writeAll("\n");
+            try fw.interface.flush();
+            cur_lines += 1;
+            if (cur_lines >= lp) {
+                part += 1;
+                cur_lines = 0;
+                try openPart(io, prefix, part, &out_file);
+            }
+        }
+    }
+}
+
+fn parseSplitSize(s: []const u8) !usize {
+    if (s.len == 0) return error.Invalid;
+    var end = s.len;
+    var mul: usize = 1;
+    const last = s[s.len - 1];
+    if (last == 'k' or last == 'K') {
+        mul = 1024;
+        end -= 1;
+    } else if (last == 'm' or last == 'M') {
+        mul = 1024 * 1024;
+        end -= 1;
+    } else if (last == 'b') {
+        end -= 1;
+    }
+    return try std.fmt.parseInt(usize, s[0..end], 10) * mul;
+}
+
+pub fn cmdShuf(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
+    // shuf [FILE] or shuf -i LO-HI  — shuffle lines / numbers
+    var i: usize = 1;
+    var range_lo: ?u64 = null;
+    var range_hi: ?u64 = null;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-i") and i + 1 < args.len) {
+            i += 1;
+            const r = args[i];
+            if (mem.indexOfScalar(u8, r, '-')) |dash| {
+                range_lo = std.fmt.parseInt(u64, r[0..dash], 10) catch null;
+                range_hi = std.fmt.parseInt(u64, r[dash + 1 ..], 10) catch null;
+            }
+        }
+    }
+
+    var lines: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer {
+        for (lines.items) |ln| arena.free(ln);
+        lines.deinit(arena);
+    }
+
+    if (range_lo) |lo| {
+        const hi = range_hi orelse lo;
+        var n = lo;
+        while (n <= hi) : (n += 1) {
+            const s = try std.fmt.allocPrint(arena, "{d}", .{n});
+            try lines.append(arena, s);
+            if (n == std.math.maxInt(u64)) break;
+        }
+    } else {
+        const path: []const u8 = if (i < args.len) args[i] else "-";
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "shuf: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                std.process.exit(1);
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        while (true) {
+            const line = (reader.interface.takeDelimiter('\n') catch break) orelse break;
+            try lines.append(arena, try arena.dupe(u8, line));
+        }
+    }
+
+    // Fisher-Yates with simple LCG seed from timestamp
+    var seed: u64 = @intCast(Io.Timestamp.now(io, .real).nanoseconds);
+    seed ^= 0x9E3779B97F4A7C15;
+    var idx = lines.items.len;
+    while (idx > 1) {
+        idx -= 1;
+        seed = seed *% 6364136223846793005 +% 1;
+        const j = seed % (idx + 1);
+        const tmp = lines.items[idx];
+        lines.items[idx] = lines.items[j];
+        lines.items[j] = tmp;
+    }
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+    for (lines.items) |ln| {
+        try w.writeAll(ln);
+        try w.writeAll("\n");
+    }
+    try w.flush();
+}
+
+pub fn cmdExpr(io: Io, args: []const [:0]const u8) !void {
+    // expr INTEGER OP INTEGER  — OP: + - * / %  and comparisons = > < >= <= !=
+    // Also: expr length STRING, expr substr STRING POS LEN
+    if (args.len < 2) {
+        try util.writeAll(io, .stdout(), "0\n");
+        return;
+    }
+
+    var wbuf: [256]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    // length S
+    if (args.len >= 3 and mem.eql(u8, args[1], "length")) {
+        try w.print("{d}\n", .{args[2].len});
+        try w.flush();
+        return;
+    }
+    // substr S POS LEN  (1-based pos)
+    if (args.len >= 5 and mem.eql(u8, args[1], "substr")) {
+        const s = args[2];
+        const pos = std.fmt.parseInt(usize, args[3], 10) catch 1;
+        const len = std.fmt.parseInt(usize, args[4], 10) catch 0;
+        const start = if (pos == 0) 0 else pos -| 1;
+        if (start >= s.len or len == 0) {
+            try w.writeAll("\n");
+        } else {
+            const end = @min(start + len, s.len);
+            try w.writeAll(s[start..end]);
+            try w.writeAll("\n");
+        }
+        try w.flush();
+        return;
+    }
+
+    // A OP B
+    if (args.len >= 4) {
+        const a = std.fmt.parseInt(i64, args[1], 10) catch {
+            try util.writeAll(io, .stderr(), "expr: non-integer argument\n");
+            std.process.exit(2);
+        };
+        const op = args[2];
+        const b = std.fmt.parseInt(i64, args[3], 10) catch {
+            try util.writeAll(io, .stderr(), "expr: non-integer argument\n");
+            std.process.exit(2);
+        };
+        var result: i64 = 0;
+        var is_bool = false;
+        if (mem.eql(u8, op, "+")) {
+            result = a +% b;
+        } else if (mem.eql(u8, op, "-")) {
+            result = a -% b;
+        } else if (mem.eql(u8, op, "*") or mem.eql(u8, op, "\\*")) {
+            result = a *% b;
+        } else if (mem.eql(u8, op, "/")) {
+            if (b == 0) {
+                try util.writeAll(io, .stderr(), "expr: division by zero\n");
+                std.process.exit(2);
+            }
+            result = @divTrunc(a, b);
+        } else if (mem.eql(u8, op, "%")) {
+            if (b == 0) {
+                try util.writeAll(io, .stderr(), "expr: division by zero\n");
+                std.process.exit(2);
+            }
+            result = @rem(a, b);
+        } else if (mem.eql(u8, op, "=") or mem.eql(u8, op, "==")) {
+            result = if (a == b) 1 else 0;
+            is_bool = true;
+        } else if (mem.eql(u8, op, "!=")) {
+            result = if (a != b) 1 else 0;
+            is_bool = true;
+        } else if (mem.eql(u8, op, ">")) {
+            result = if (a > b) 1 else 0;
+            is_bool = true;
+        } else if (mem.eql(u8, op, "<")) {
+            result = if (a < b) 1 else 0;
+            is_bool = true;
+        } else if (mem.eql(u8, op, ">=")) {
+            result = if (a >= b) 1 else 0;
+            is_bool = true;
+        } else if (mem.eql(u8, op, "<=")) {
+            result = if (a <= b) 1 else 0;
+            is_bool = true;
+        } else {
+            try util.writeAll(io, .stderr(), "expr: unknown operator\n");
+            std.process.exit(2);
+        }
+        try w.print("{d}\n", .{result});
+        try w.flush();
+        if (is_bool and result == 0) std.process.exit(1);
+        return;
+    }
+
+    // single arg: print it
+    try w.writeAll(args[1]);
+    try w.writeAll("\n");
+    try w.flush();
+}
+
+
+pub fn cmdJoin(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
+    // join [-t CHAR] FILE1 FILE2  — join on first field (sorted inputs assumed)
+    var delim: u8 = ' ';
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-t") and i + 1 < args.len) {
+            i += 1;
+            if (args[i].len > 0) delim = args[i][0];
+        }
+    }
+    if (i + 1 >= args.len) {
+        try util.writeAll(io, .stderr(), "join: need two files\n");
+        std.process.exit(1);
+    }
+    const path1 = args[i];
+    const path2 = args[i + 1];
+
+    const lines1 = try readAllLines(io, arena, path1);
+    defer freeLines(arena, lines1);
+    const lines2 = try readAllLines(io, arena, path2);
+    defer freeLines(arena, lines2);
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    var idx1: usize = 0;
+    var idx2: usize = 0;
+    while (idx1 < lines1.len and idx2 < lines2.len) {
+        const k1 = firstField(lines1[idx1], delim);
+        const k2 = firstField(lines2[idx2], delim);
+        const ord = mem.order(u8, k1, k2);
+        if (ord == .lt) {
+            idx1 += 1;
+        } else if (ord == .gt) {
+            idx2 += 1;
+        } else {
+            // equal keys: output key + rest of both
+            try w.writeAll(k1);
+            const r1 = restFields(lines1[idx1], delim);
+            const r2 = restFields(lines2[idx2], delim);
+            if (r1.len > 0) {
+                try w.writeAll(&.{delim});
+                try w.writeAll(r1);
+            }
+            if (r2.len > 0) {
+                try w.writeAll(&.{delim});
+                try w.writeAll(r2);
+            }
+            try w.writeAll("\n");
+            idx1 += 1;
+            idx2 += 1;
+        }
+    }
+    try w.flush();
+}
+
+fn firstField(line: []const u8, delim: u8) []const u8 {
+    if (mem.indexOfScalar(u8, line, delim)) |p| return line[0..p];
+    return line;
+}
+
+fn restFields(line: []const u8, delim: u8) []const u8 {
+    if (mem.indexOfScalar(u8, line, delim)) |p| {
+        if (p + 1 < line.len) return line[p + 1 ..];
+        return "";
+    }
+    return "";
+}
+
+fn readAllLines(io: Io, arena: mem.Allocator, path: []const u8) ![][]const u8 {
+    const file = if (mem.eql(u8, path, "-"))
+        Io.File.stdin()
+    else
+        try Io.Dir.cwd().openFile(io, path, .{});
+    defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+    var list: std.ArrayListUnmanaged([]const u8) = .empty;
+    errdefer freeLines(arena, list.items);
+
+    var rbuf: [8192]u8 = undefined;
+    var reader: Io.File.Reader = .init(file, io, &rbuf);
+    while (true) {
+        const line = (reader.interface.takeDelimiter('\n') catch break) orelse break;
+        try list.append(arena, try arena.dupe(u8, line));
+    }
+    return try list.toOwnedSlice(arena);
+}
+
+fn freeLines(arena: mem.Allocator, lines: [][]const u8) void {
+    for (lines) |ln| arena.free(ln);
+    arena.free(lines);
+}
+
+pub fn cmdComm(io: Io, arena: mem.Allocator, args: []const [:0]const u8) !void {
+    // comm [-123] FILE1 FILE2  — compare sorted files line by line
+    var show1 = true;
+    var show2 = true;
+    var show3 = true;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        for (args[i][1..]) |c| {
+            switch (c) {
+                '1' => show1 = false,
+                '2' => show2 = false,
+                '3' => show3 = false,
+                else => {},
+            }
+        }
+    }
+    if (i + 1 >= args.len) {
+        try util.writeAll(io, .stderr(), "comm: need two files\n");
+        std.process.exit(1);
+    }
+    const lines1 = try readAllLines(io, arena, args[i]);
+    defer freeLines(arena, lines1);
+    const lines2 = try readAllLines(io, arena, args[i + 1]);
+    defer freeLines(arena, lines2);
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    var idx1: usize = 0;
+    var idx2: usize = 0;
+    while (idx1 < lines1.len or idx2 < lines2.len) {
+        if (idx1 >= lines1.len) {
+            if (show2) {
+                if (show1) try w.writeAll("\t");
+                try w.writeAll(lines2[idx2]);
+                try w.writeAll("\n");
+            }
+            idx2 += 1;
+            continue;
+        }
+        if (idx2 >= lines2.len) {
+            if (show1) {
+                try w.writeAll(lines1[idx1]);
+                try w.writeAll("\n");
+            }
+            idx1 += 1;
+            continue;
+        }
+        const ord = mem.order(u8, lines1[idx1], lines2[idx2]);
+        if (ord == .lt) {
+            if (show1) {
+                try w.writeAll(lines1[idx1]);
+                try w.writeAll("\n");
+            }
+            idx1 += 1;
+        } else if (ord == .gt) {
+            if (show2) {
+                if (show1) try w.writeAll("\t");
+                try w.writeAll(lines2[idx2]);
+                try w.writeAll("\n");
+            }
+            idx2 += 1;
+        } else {
+            if (show3) {
+                if (show1) try w.writeAll("\t");
+                if (show2) try w.writeAll("\t");
+                try w.writeAll(lines1[idx1]);
+                try w.writeAll("\n");
+            }
+            idx1 += 1;
+            idx2 += 1;
+        }
+    }
+    try w.flush();
+}
+
+pub fn cmdFmt(io: Io, args: []const [:0]const u8) !void {
+    // fmt [-w WIDTH] [FILE]...  — simple paragraph refill
+    var width: usize = 75;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if (mem.eql(u8, a, "-w") and i + 1 < args.len) {
+            i += 1;
+            width = std.fmt.parseInt(usize, args[i], 10) catch 75;
+        } else if (a.len > 2 and a[0] == '-' and a[1] == 'w') {
+            width = std.fmt.parseInt(usize, a[2..], 10) catch 75;
+        }
+    }
+    if (width == 0) width = 75;
+
+    const paths: []const [:0]const u8 = if (i >= args.len)
+        &[_][:0]const u8{"-"}
+    else
+        args[i..];
+
+    var wbuf: [8192]u8 = undefined;
+    var writer: Io.File.Writer = .initStreaming(.stdout(), io, &wbuf);
+    const w = &writer.interface;
+
+    for (paths) |path| {
+        const file = if (mem.eql(u8, path, "-"))
+            Io.File.stdin()
+        else
+            Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
+                var buf: [256]u8 = undefined;
+                const msg = try std.fmt.bufPrint(&buf, "fmt: {s}: {s}\n", .{ path, @errorName(err) });
+                try util.writeAll(io, .stderr(), msg);
+                continue;
+            };
+        defer if (!mem.eql(u8, path, "-")) file.close(io);
+
+        var rbuf: [8192]u8 = undefined;
+        var reader: Io.File.Reader = .init(file, io, &rbuf);
+        var col: usize = 0;
+        
+        while (true) {
+            const line = (reader.interface.takeDelimiter('\n') catch break) orelse break;
+            // blank line → paragraph break
+            if (line.len == 0) {
+                if (col > 0) {
+                    try w.writeAll("\n");
+                    col = 0;
+                }
+                try w.writeAll("\n");
+                continue;
+            }
+            var it = mem.tokenizeAny(u8, line, " \t");
+            while (it.next()) |word| {
+                if (col == 0) {
+                    try w.writeAll(word);
+                    col = word.len;
+                } else if (col + 1 + word.len <= width) {
+                    try w.writeAll(" ");
+                    try w.writeAll(word);
+                    col += 1 + word.len;
+                } else {
+                    try w.writeAll("\n");
+                    try w.writeAll(word);
+                    col = word.len;
+                }
+                
+            }
+        }
+        if (col > 0) try w.writeAll("\n");
+    }
+    try w.flush();
+}
+
+
 test "eqlIgnoreCase" {
     try std.testing.expect(eqlIgnoreCase("abc", "ABC"));
     try std.testing.expect(eqlIgnoreCase("AbC", "aBc"));

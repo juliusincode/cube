@@ -1150,6 +1150,138 @@ fn resolvePath(io: Io, arena: mem.Allocator, path: []const u8) ![]u8 {
 }
 
 
+pub fn cmdChmod(io: Io, args: []const [:0]const u8) !void {
+    // chmod MODE FILE...  (numeric mode only, e.g. 755 or 0755)
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        // ignore flags for now (-R later)
+    }
+    if (i >= args.len) {
+        try util.writeAll(io, .stderr(), "chmod: missing operand\n");
+        std.process.exit(1);
+    }
+    const mode_str = args[i];
+    i += 1;
+    if (i >= args.len) {
+        try util.writeAll(io, .stderr(), "chmod: missing file operand\n");
+        std.process.exit(1);
+    }
+
+    const mode_val = std.fmt.parseInt(u32, mode_str, 8) catch {
+        try util.writeAll(io, .stderr(), "chmod: invalid mode (use octal, e.g. 755)\n");
+        std.process.exit(1);
+    };
+    const perms = Io.File.Permissions.fromMode(@intCast(mode_val));
+
+    var failed = false;
+    while (i < args.len) : (i += 1) {
+        Io.Dir.cwd().setFilePermissions(io, args[i], perms, .{}) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "chmod: {s}: {s}\n", .{ args[i], @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+            failed = true;
+        };
+    }
+    if (failed) std.process.exit(1);
+}
+
+
+pub fn cmdTruncate(io: Io, args: []const [:0]const u8) !void {
+    // truncate -s SIZE FILE...
+    // SIZE: N, Nk, Nm, Ng (bytes); optional leading + or - not supported for simplicity
+    var size: ?u64 = null;
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {
+        const a = args[i];
+        if ((mem.eql(u8, a, "-s") or mem.eql(u8, a, "--size")) and i + 1 < args.len) {
+            i += 1;
+            size = parseSize(args[i]) catch {
+                try util.writeAll(io, .stderr(), "truncate: invalid size\n");
+                std.process.exit(1);
+            };
+        } else if (a.len > 2 and a[0] == '-' and a[1] == 's') {
+            size = parseSize(a[2..]) catch {
+                try util.writeAll(io, .stderr(), "truncate: invalid size\n");
+                std.process.exit(1);
+            };
+        }
+    }
+    if (size == null) {
+        try util.writeAll(io, .stderr(), "truncate: must specify -s SIZE\n");
+        std.process.exit(1);
+    }
+    if (i >= args.len) {
+        try util.writeAll(io, .stderr(), "truncate: missing file operand\n");
+        std.process.exit(1);
+    }
+
+    const sz = size.?;
+    var failed = false;
+    while (i < args.len) : (i += 1) {
+        const path = args[i];
+        // create if missing, don't truncate content on open
+        const file = Io.Dir.cwd().createFile(io, path, .{ .truncate = false }) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "truncate: {s}: {s}\n", .{ path, @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+            failed = true;
+            continue;
+        };
+        defer file.close(io);
+        file.setLength(io, sz) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "truncate: {s}: {s}\n", .{ path, @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+            failed = true;
+        };
+    }
+    if (failed) std.process.exit(1);
+}
+
+fn parseSize(s: []const u8) !u64 {
+    if (s.len == 0) return error.InvalidSize;
+    var end = s.len;
+    var mul: u64 = 1;
+    const last = s[s.len - 1];
+    if (last == 'k' or last == 'K') {
+        mul = 1024;
+        end = s.len - 1;
+    } else if (last == 'm' or last == 'M') {
+        mul = 1024 * 1024;
+        end = s.len - 1;
+    } else if (last == 'g' or last == 'G') {
+        mul = 1024 * 1024 * 1024;
+        end = s.len - 1;
+    } else if (last == 'c' or last == 'b') {
+        end = s.len - 1;
+    }
+    const n = try std.fmt.parseInt(u64, s[0..end], 10);
+    return n *% mul;
+}
+
+
+pub fn cmdUnlink(io: Io, args: []const [:0]const u8) !void {
+    // unlink FILE  — remove a single file (not directory)
+    var i: usize = 1;
+    while (i < args.len and args[i].len > 0 and args[i][0] == '-') : (i += 1) {}
+    if (i >= args.len) {
+        try util.writeAll(io, .stderr(), "unlink: missing operand\n");
+        std.process.exit(1);
+    }
+    // POSIX unlink takes exactly one file; allow multiple like busybox sometimes does
+    var failed = false;
+    while (i < args.len) : (i += 1) {
+        Io.Dir.cwd().deleteFile(io, args[i]) catch |err| {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "unlink: {s}: {s}\n", .{ args[i], @errorName(err) });
+            try util.writeAll(io, .stderr(), msg);
+            failed = true;
+        };
+    }
+    if (failed) std.process.exit(1);
+}
+
+
 test "classifySuffix" {
     try std.testing.expectEqualStrings("/", classifySuffix(.directory));
     try std.testing.expectEqualStrings("@", classifySuffix(.sym_link));
