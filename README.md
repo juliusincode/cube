@@ -127,10 +127,10 @@ LICENSE
 | Document | Contents |
 |----------|----------|
 | [ROADMAP.md](ROADMAP.md) | Phased plan toward BusyBox parity |
-| [docs/STANDARDS.md](docs/STANDARDS.md) | Compatibility, CLI, code rules |
+| [docs/STANDARDS.md](docs/STANDARDS.md) | Compatibility, CLI, and code conventions |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Dispatch model, modules, I/O |
-| [docs/APPLETS.md](docs/APPLETS.md) | Flags and status per applet |
-| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Adding tools and tests |
+| [docs/APPLETS.md](docs/APPLETS.md) | Flags and implementation status per applet |
+| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Adding applets and tests |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 
 ## Testing

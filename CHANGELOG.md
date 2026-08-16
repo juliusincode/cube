@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Documentation overhaul for a clearer project professional baseline
+- Documentation overhaul for a consistent, professional baseline
 - Version banner and package metadata aligned to 0.3.0
 
 ## [0.2.0] — 2026-08-10
