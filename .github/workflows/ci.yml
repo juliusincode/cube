@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch/PR so pushes don't queue behind
+# their own stale predecessors.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep this in sync with `minimum_zig_version` in build.zig.zon.
+  ZIG_VERSION: "0.16.0"
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Zig 0.16.0 isn't on PyPI's ziglang package as a GitHub Release yet at
+      # the time this workflow was written, but the Zig Software Foundation
+      # publishes official builds as the `ziglang` PyPI package (bundles the
+      # compiler and its lib/ standard library together, so no separate
+      # --zig-lib-dir wiring is needed). See docs/ARCHITECTURE.md.
+      - name: Install Zig ${{ env.ZIG_VERSION }}
+        run: pip install "ziglang==${{ env.ZIG_VERSION }}"
+
+      - name: zig version
+        run: python3 -m ziglang version
+
+      - name: Check formatting (zig fmt)
+        run: python3 -m ziglang fmt --check src/ build.zig
+
+      - name: Build (Debug)
+        run: python3 -m ziglang build
+
+      - name: Unit tests
+        run: python3 -m ziglang build test --summary all
+
+      - name: Build (ReleaseSmall)
+        run: python3 -m ziglang build -Doptimize=ReleaseSmall
+
+      - name: Integration harness
+        run: python3 tests/harness.py --cube zig-out/bin/cube -v
+
+      - name: Report binary size
+        run: ls -la zig-out/bin/cube
