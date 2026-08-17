@@ -1,5 +1,7 @@
 # cube
 
+[![CI](https://github.com/juliusincode/cube/actions/workflows/ci.yml/badge.svg)](https://github.com/juliusincode/cube/actions/workflows/ci.yml)
+
 **cube** is a pure-[Zig](https://ziglang.org/) multi-call binary in the spirit of
 [BusyBox](https://www.busybox.net/): one executable, many common Unix utilities.
 

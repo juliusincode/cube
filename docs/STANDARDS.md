@@ -26,11 +26,12 @@ cube aims to become a **production-capable BusyBox alternative** in pure Zig.
 
 New applets:
 
-1. Implement `pub fn cmdFoo(...)`
-2. Register in `src/main.zig` dispatch
-3. Add the name to `src/applets_list.zig` (alphabetical)
-4. Document in `docs/APPLETS.md`
-5. Add a harness case and/or unit test when practical
+1. Implement `pub fn cmdFoo(...)` in its own file, `src/applets/<group>/foo.zig`.
+2. Re-export it from `src/applets/<group>.zig` and reference the new file in that same aggregator's `test {}` block (see [ARCHITECTURE.md](ARCHITECTURE.md) — otherwise its unit tests silently never run).
+3. In `src/main.zig`, add a thin adapter (`fn hFoo(ctx: Ctx) !void { try module.cmdFoo(...); }`) and one row in `dispatch_table`.
+4. Add the name to `src/applets_list.zig` (alphabetical). A comptime check in `main.zig` fails the build if `dispatch_table` and `applets_list.names` diverge in size.
+5. Document in `docs/APPLETS.md`.
+6. Add a harness case and/or unit test when practical.
 
 ## Dependencies and size
 

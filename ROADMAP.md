@@ -49,7 +49,7 @@ and related applets.
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Table-driven dispatch | Planned | Replace the string-comparison chain in `main.zig` with a shared `Context` and a handler table |
+| Table-driven dispatch | Done | `main.zig` now resolves applets through a `std.StaticStringMap(Handler)` keyed by name, with one thin per-signature adapter function per applet, instead of a string-comparison chain |
 | Per-applet `--help` | Planned | Currently implemented for only a small subset of applets |
 | Richer `grep` (basic regex) | Planned | Current implementation is fixed-string only |
 | `find` `-path` / `-iname` extensions | Planned | |
@@ -58,7 +58,7 @@ and related applets.
 | `ash`-compatible shell | Planned | Major project |
 | Networking (`wget`, `nc`, and similar) | Planned | |
 | Feature / `CONFIG_*` build flags | Planned | For binary size tuning |
-| Continuous integration (build + test harness) | Planned | |
+| Continuous integration (build + test harness) | Done | `.github/workflows/ci.yml`: `zig fmt --check`, Debug build, unit tests, ReleaseSmall build, `tests/harness.py` — all on every push and PR |
 
 ## Design principles
 
