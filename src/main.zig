@@ -56,9 +56,7 @@ pub fn main(init: process.Init) !void {
 
 fn isMultiCallName(name: []const u8) bool {
     const base = util.basename(name);
-    return mem.eql(u8, base, "cube")
-        or mem.eql(u8, base, "busybox")
-        or mem.eql(u8, base, "bb");
+    return mem.eql(u8, base, "cube") or mem.eql(u8, base, "busybox") or mem.eql(u8, base, "bb");
 }
 
 fn getAppletName(args: []const [:0]const u8) []const u8 {
@@ -87,177 +85,462 @@ fn dispatch(
         break :blk list;
     };
 
-    if (mem.eql(u8, applet, "echo")) {
-        try text.cmdEcho(io, argv);
-    } else if (mem.eql(u8, applet, "true")) {
-        // exit 0
-    } else if (mem.eql(u8, applet, "false")) {
-        std.process.exit(1);
-    } else if (mem.eql(u8, applet, "cat")) {
-        try text.cmdCat(io, argv);
-    } else if (mem.eql(u8, applet, "ls")) {
-        try fs.cmdLs(io, arena, argv);
-    } else if (mem.eql(u8, applet, "pwd")) {
-        try fs.cmdPwd(io, arena);
-    } else if (mem.eql(u8, applet, "mkdir")) {
-        try fs.cmdMkdir(io, argv);
-    } else if (mem.eql(u8, applet, "rmdir")) {
-        try fs.cmdRmdir(io, argv);
-    } else if (mem.eql(u8, applet, "rm")) {
-        try fs.cmdRm(io, arena, argv);
-    } else if (mem.eql(u8, applet, "touch")) {
-        try fs.cmdTouch(io, argv);
-    } else if (mem.eql(u8, applet, "cp")) {
-        try fs.cmdCp(io, arena, argv);
-    } else if (mem.eql(u8, applet, "mv")) {
-        try fs.cmdMv(io, argv);
-    } else if (mem.eql(u8, applet, "ln")) {
-        try fs.cmdLn(io, argv);
-    } else if (mem.eql(u8, applet, "sleep")) {
-        try sys.cmdSleep(io, argv);
-    } else if (mem.eql(u8, applet, "yes")) {
-        try text.cmdYes(io, argv);
-    } else if (mem.eql(u8, applet, "head")) {
-        try text.cmdHead(io, argv);
-    } else if (mem.eql(u8, applet, "tail")) {
-        try text.cmdTail(io, arena, argv);
-    } else if (mem.eql(u8, applet, "wc")) {
-        try text.cmdWc(io, argv);
-    } else if (mem.eql(u8, applet, "basename")) {
-        try fs.cmdBasename(io, argv);
-    } else if (mem.eql(u8, applet, "dirname")) {
-        try fs.cmdDirname(io, argv);
-    } else if (mem.eql(u8, applet, "uname")) {
-        try sys.cmdUname(io, argv);
-    } else if (mem.eql(u8, applet, "whoami")) {
-        try sys.cmdWhoami(io);
-    } else if (mem.eql(u8, applet, "id")) {
-        try sys.cmdId(io);
-    } else if (mem.eql(u8, applet, "date")) {
-        try sys.cmdDate(io, argv);
-    } else if (mem.eql(u8, applet, "clear")) {
-        try sys.cmdClear(io);
-    } else if (mem.eql(u8, applet, "seq")) {
-        try text.cmdSeq(io, argv);
-    } else if (mem.eql(u8, applet, "test") or mem.eql(u8, applet, "[")) {
-        try sys.cmdTest(io, argv);
-    } else if (mem.eql(u8, applet, "printf")) {
-        try text.cmdPrintf(io, argv);
-    } else if (mem.eql(u8, applet, "env") or mem.eql(u8, applet, "printenv")) {
-        try sys.cmdEnv(io, argv, environ);
-    } else if (mem.eql(u8, applet, "which")) {
-        try sys.cmdWhich(io, arena, argv, environ);
-    } else if (mem.eql(u8, applet, "grep")) {
-        try text.cmdGrep(io, arena, argv);
-    } else if (mem.eql(u8, applet, "sort")) {
-        try text.cmdSort(io, arena, argv);
-    } else if (mem.eql(u8, applet, "cut")) {
-        try text.cmdCut(io, argv);
-    } else if (mem.eql(u8, applet, "uniq")) {
-        try text.cmdUniq(io, arena, argv);
-    } else if (mem.eql(u8, applet, "tr")) {
-        try text.cmdTr(io, argv);
-    } else if (mem.eql(u8, applet, "rev")) {
-        try text.cmdRev(io, argv);
-    } else if (mem.eql(u8, applet, "hostname")) {
-        try sys.cmdHostname(io, argv);
-    } else if (mem.eql(u8, applet, "readlink")) {
-        try fs.cmdReadlink(io, argv);
-    } else if (mem.eql(u8, applet, "find")) {
-        try fs.cmdFind(io, arena, argv);
-    } else if (mem.eql(u8, applet, "du")) {
-        try fs.cmdDu(io, arena, argv);
-    } else if (mem.eql(u8, applet, "df")) {
-        try fs.cmdDf(io, argv);
-    } else if (mem.eql(u8, applet, "uptime")) {
-        try sys.cmdUptime(io, argv);
-    } else if (mem.eql(u8, applet, "free")) {
-        try sys.cmdFree(io, argv);
-    } else if (mem.eql(u8, applet, "sed")) {
-        try text.cmdSed(io, argv);
-    } else if (mem.eql(u8, applet, "mktemp")) {
-        try fs.cmdMktemp(io, argv);
-    } else if (mem.eql(u8, applet, "kill")) {
-        try sys.cmdKill(io, argv);
-    } else if (mem.eql(u8, applet, "ps")) {
-        try sys.cmdPs(io, arena, argv);
-    } else if (mem.eql(u8, applet, "tee")) {
-        try text.cmdTee(io, argv);
-    } else if (mem.eql(u8, applet, "xargs")) {
-        try text.cmdXargs(io, arena, argv);
-    } else if (mem.eql(u8, applet, "realpath")) {
-        try fs.cmdRealpath(io, arena, argv);
-    } else if (mem.eql(u8, applet, "base64")) {
-        try text.cmdBase64(io, argv);
-    } else if (mem.eql(u8, applet, "md5sum")) {
-        try text.cmdMd5sum(io, argv);
-    } else if (mem.eql(u8, applet, "sha256sum")) {
-        try text.cmdSha256sum(io, argv);
-    } else if (mem.eql(u8, applet, "cmp")) {
-        try text.cmdCmp(io, argv);
-    } else if (mem.eql(u8, applet, "chmod")) {
-        try fs.cmdChmod(io, arena, argv);
-    } else if (mem.eql(u8, applet, "nproc")) {
-        try sys.cmdNproc(io, argv);
-    } else if (mem.eql(u8, applet, "sync")) {
-        try sys.cmdSync(io, argv);
-    } else if (mem.eql(u8, applet, "od")) {
-        try text.cmdOd(io, argv);
-    } else if (mem.eql(u8, applet, "nl")) {
-        try text.cmdNl(io, argv);
-    } else if (mem.eql(u8, applet, "tac")) {
-        try text.cmdTac(io, arena, argv);
-    } else if (mem.eql(u8, applet, "strings")) {
-        try text.cmdStrings(io, argv);
-    } else if (mem.eql(u8, applet, "fold")) {
-        try text.cmdFold(io, argv);
-    } else if (mem.eql(u8, applet, "paste")) {
-        try text.cmdPaste(io, arena, argv);
-    } else if (mem.eql(u8, applet, "expand")) {
-        try text.cmdExpand(io, argv);
-    } else if (mem.eql(u8, applet, "factor")) {
-        try text.cmdFactor(io, argv);
-    } else if (mem.eql(u8, applet, "truncate")) {
-        try fs.cmdTruncate(io, argv);
-    } else if (mem.eql(u8, applet, "split")) {
-        try text.cmdSplit(io, argv);
-    } else if (mem.eql(u8, applet, "shuf")) {
-        try text.cmdShuf(io, arena, argv);
-    } else if (mem.eql(u8, applet, "expr")) {
-        try text.cmdExpr(io, argv);
-    } else if (mem.eql(u8, applet, "unlink")) {
-        try fs.cmdUnlink(io, argv);
-    } else if (mem.eql(u8, applet, "join")) {
-        try text.cmdJoin(io, arena, argv);
-    } else if (mem.eql(u8, applet, "comm")) {
-        try text.cmdComm(io, arena, argv);
-    } else if (mem.eql(u8, applet, "fmt")) {
-        try text.cmdFmt(io, argv);
-    } else if (mem.eql(u8, applet, "arch")) {
-        try sys.cmdArch(io, argv);
-    } else if (mem.eql(u8, applet, "dd")) {
-        try fs.cmdDd(io, argv);
-    } else if (mem.eql(u8, applet, "install")) {
-        try fs.cmdInstall(io, argv);
-    } else if (mem.eql(u8, applet, "link")) {
-        try fs.cmdLink(io, argv);
-    } else if (mem.eql(u8, applet, "cksum")) {
-        try fs.cmdCksum(io, argv);
-    } else if (mem.eql(u8, applet, "stat")) {
-        try fs.cmdStat(io, argv);
-    } else if (mem.eql(u8, applet, "unexpand")) {
-        try text.cmdUnexpand(io, argv);
-    } else if (mem.eql(u8, applet, "gzip")) {
-        try fs.cmdGzip(io, argv);
-    } else if (mem.eql(u8, applet, "gunzip")) {
-        try fs.cmdGunzip(io, argv);
-    } else if (mem.eql(u8, applet, "sum")) {
-        try fs.cmdSum(io, argv);
-    } else {
+    const handler = dispatch_table.get(applet) orelse {
         var buf: [256]u8 = undefined;
         const msg = try std.fmt.bufPrint(&buf, "cube: {s}: applet not found\n", .{applet});
         try util.writeAll(io, .stderr(), msg);
         std.process.exit(127);
+    };
+
+    const ctx = Ctx{ .io = io, .arena = arena, .argv = argv, .environ = environ };
+    try handler(ctx);
+}
+
+/// Shared context passed to every applet handler, regardless of which
+/// underlying cmd* parameters that applet actually needs.
+const Ctx = struct {
+    io: Io,
+    arena: mem.Allocator,
+    argv: []const [:0]const u8,
+    environ: *process.Environ.Map,
+};
+
+const Handler = *const fn (Ctx) anyerror!void;
+
+// One thin adapter per underlying cmd* signature so every dispatch_table
+// entry shares the same Handler type. Mechanical 1:1 mapping onto
+// src/applets/*.zig — see docs/ARCHITECTURE.md for the dispatch model.
+fn hEcho(ctx: Ctx) !void {
+    try text.cmdEcho(ctx.io, ctx.argv);
+}
+
+fn hTrue(ctx: Ctx) !void {
+    _ = ctx;
+}
+
+fn hFalse(ctx: Ctx) !void {
+    _ = ctx;
+    std.process.exit(1);
+}
+
+fn hCat(ctx: Ctx) !void {
+    try text.cmdCat(ctx.io, ctx.argv);
+}
+
+fn hLs(ctx: Ctx) !void {
+    try fs.cmdLs(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hPwd(ctx: Ctx) !void {
+    try fs.cmdPwd(ctx.io, ctx.arena);
+}
+
+fn hMkdir(ctx: Ctx) !void {
+    try fs.cmdMkdir(ctx.io, ctx.argv);
+}
+
+fn hRmdir(ctx: Ctx) !void {
+    try fs.cmdRmdir(ctx.io, ctx.argv);
+}
+
+fn hRm(ctx: Ctx) !void {
+    try fs.cmdRm(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hTouch(ctx: Ctx) !void {
+    try fs.cmdTouch(ctx.io, ctx.argv);
+}
+
+fn hCp(ctx: Ctx) !void {
+    try fs.cmdCp(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hMv(ctx: Ctx) !void {
+    try fs.cmdMv(ctx.io, ctx.argv);
+}
+
+fn hLn(ctx: Ctx) !void {
+    try fs.cmdLn(ctx.io, ctx.argv);
+}
+
+fn hSleep(ctx: Ctx) !void {
+    try sys.cmdSleep(ctx.io, ctx.argv);
+}
+
+fn hYes(ctx: Ctx) !void {
+    try text.cmdYes(ctx.io, ctx.argv);
+}
+
+fn hHead(ctx: Ctx) !void {
+    try text.cmdHead(ctx.io, ctx.argv);
+}
+
+fn hTail(ctx: Ctx) !void {
+    try text.cmdTail(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hWc(ctx: Ctx) !void {
+    try text.cmdWc(ctx.io, ctx.argv);
+}
+
+fn hBasename(ctx: Ctx) !void {
+    try fs.cmdBasename(ctx.io, ctx.argv);
+}
+
+fn hDirname(ctx: Ctx) !void {
+    try fs.cmdDirname(ctx.io, ctx.argv);
+}
+
+fn hUname(ctx: Ctx) !void {
+    try sys.cmdUname(ctx.io, ctx.argv);
+}
+
+fn hWhoami(ctx: Ctx) !void {
+    try sys.cmdWhoami(ctx.io);
+}
+
+fn hId(ctx: Ctx) !void {
+    try sys.cmdId(ctx.io);
+}
+
+fn hDate(ctx: Ctx) !void {
+    try sys.cmdDate(ctx.io, ctx.argv);
+}
+
+fn hClear(ctx: Ctx) !void {
+    try sys.cmdClear(ctx.io);
+}
+
+fn hSeq(ctx: Ctx) !void {
+    try text.cmdSeq(ctx.io, ctx.argv);
+}
+
+fn hTest(ctx: Ctx) !void {
+    try sys.cmdTest(ctx.io, ctx.argv);
+}
+
+fn hPrintf(ctx: Ctx) !void {
+    try text.cmdPrintf(ctx.io, ctx.argv);
+}
+
+fn hEnv(ctx: Ctx) !void {
+    try sys.cmdEnv(ctx.io, ctx.argv, ctx.environ);
+}
+
+fn hWhich(ctx: Ctx) !void {
+    try sys.cmdWhich(ctx.io, ctx.arena, ctx.argv, ctx.environ);
+}
+
+fn hGrep(ctx: Ctx) !void {
+    try text.cmdGrep(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hSort(ctx: Ctx) !void {
+    try text.cmdSort(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hCut(ctx: Ctx) !void {
+    try text.cmdCut(ctx.io, ctx.argv);
+}
+
+fn hUniq(ctx: Ctx) !void {
+    try text.cmdUniq(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hTr(ctx: Ctx) !void {
+    try text.cmdTr(ctx.io, ctx.argv);
+}
+
+fn hRev(ctx: Ctx) !void {
+    try text.cmdRev(ctx.io, ctx.argv);
+}
+
+fn hHostname(ctx: Ctx) !void {
+    try sys.cmdHostname(ctx.io, ctx.argv);
+}
+
+fn hReadlink(ctx: Ctx) !void {
+    try fs.cmdReadlink(ctx.io, ctx.argv);
+}
+
+fn hFind(ctx: Ctx) !void {
+    try fs.cmdFind(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hDu(ctx: Ctx) !void {
+    try fs.cmdDu(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hDf(ctx: Ctx) !void {
+    try fs.cmdDf(ctx.io, ctx.argv);
+}
+
+fn hUptime(ctx: Ctx) !void {
+    try sys.cmdUptime(ctx.io, ctx.argv);
+}
+
+fn hFree(ctx: Ctx) !void {
+    try sys.cmdFree(ctx.io, ctx.argv);
+}
+
+fn hSed(ctx: Ctx) !void {
+    try text.cmdSed(ctx.io, ctx.argv);
+}
+
+fn hMktemp(ctx: Ctx) !void {
+    try fs.cmdMktemp(ctx.io, ctx.argv);
+}
+
+fn hKill(ctx: Ctx) !void {
+    try sys.cmdKill(ctx.io, ctx.argv);
+}
+
+fn hPs(ctx: Ctx) !void {
+    try sys.cmdPs(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hTee(ctx: Ctx) !void {
+    try text.cmdTee(ctx.io, ctx.argv);
+}
+
+fn hXargs(ctx: Ctx) !void {
+    try text.cmdXargs(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hRealpath(ctx: Ctx) !void {
+    try fs.cmdRealpath(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hBase64(ctx: Ctx) !void {
+    try text.cmdBase64(ctx.io, ctx.argv);
+}
+
+fn hMd5sum(ctx: Ctx) !void {
+    try text.cmdMd5sum(ctx.io, ctx.argv);
+}
+
+fn hSha256sum(ctx: Ctx) !void {
+    try text.cmdSha256sum(ctx.io, ctx.argv);
+}
+
+fn hCmp(ctx: Ctx) !void {
+    try text.cmdCmp(ctx.io, ctx.argv);
+}
+
+fn hChmod(ctx: Ctx) !void {
+    try fs.cmdChmod(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hNproc(ctx: Ctx) !void {
+    try sys.cmdNproc(ctx.io, ctx.argv);
+}
+
+fn hSync(ctx: Ctx) !void {
+    try sys.cmdSync(ctx.io, ctx.argv);
+}
+
+fn hOd(ctx: Ctx) !void {
+    try text.cmdOd(ctx.io, ctx.argv);
+}
+
+fn hNl(ctx: Ctx) !void {
+    try text.cmdNl(ctx.io, ctx.argv);
+}
+
+fn hTac(ctx: Ctx) !void {
+    try text.cmdTac(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hStrings(ctx: Ctx) !void {
+    try text.cmdStrings(ctx.io, ctx.argv);
+}
+
+fn hFold(ctx: Ctx) !void {
+    try text.cmdFold(ctx.io, ctx.argv);
+}
+
+fn hPaste(ctx: Ctx) !void {
+    try text.cmdPaste(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hExpand(ctx: Ctx) !void {
+    try text.cmdExpand(ctx.io, ctx.argv);
+}
+
+fn hFactor(ctx: Ctx) !void {
+    try text.cmdFactor(ctx.io, ctx.argv);
+}
+
+fn hTruncate(ctx: Ctx) !void {
+    try fs.cmdTruncate(ctx.io, ctx.argv);
+}
+
+fn hSplit(ctx: Ctx) !void {
+    try text.cmdSplit(ctx.io, ctx.argv);
+}
+
+fn hShuf(ctx: Ctx) !void {
+    try text.cmdShuf(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hExpr(ctx: Ctx) !void {
+    try text.cmdExpr(ctx.io, ctx.argv);
+}
+
+fn hUnlink(ctx: Ctx) !void {
+    try fs.cmdUnlink(ctx.io, ctx.argv);
+}
+
+fn hJoin(ctx: Ctx) !void {
+    try text.cmdJoin(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hComm(ctx: Ctx) !void {
+    try text.cmdComm(ctx.io, ctx.arena, ctx.argv);
+}
+
+fn hFmt(ctx: Ctx) !void {
+    try text.cmdFmt(ctx.io, ctx.argv);
+}
+
+fn hArch(ctx: Ctx) !void {
+    try sys.cmdArch(ctx.io, ctx.argv);
+}
+
+fn hDd(ctx: Ctx) !void {
+    try fs.cmdDd(ctx.io, ctx.argv);
+}
+
+fn hInstall(ctx: Ctx) !void {
+    try fs.cmdInstall(ctx.io, ctx.argv);
+}
+
+fn hLink(ctx: Ctx) !void {
+    try fs.cmdLink(ctx.io, ctx.argv);
+}
+
+fn hCksum(ctx: Ctx) !void {
+    try fs.cmdCksum(ctx.io, ctx.argv);
+}
+
+fn hStat(ctx: Ctx) !void {
+    try fs.cmdStat(ctx.io, ctx.argv);
+}
+
+fn hUnexpand(ctx: Ctx) !void {
+    try text.cmdUnexpand(ctx.io, ctx.argv);
+}
+
+fn hGzip(ctx: Ctx) !void {
+    try fs.cmdGzip(ctx.io, ctx.argv);
+}
+
+fn hGunzip(ctx: Ctx) !void {
+    try fs.cmdGunzip(ctx.io, ctx.argv);
+}
+
+fn hSum(ctx: Ctx) !void {
+    try fs.cmdSum(ctx.io, ctx.argv);
+}
+
+/// Canonical applet -> handler table. Must stay in sync with
+/// src/applets_list.zig (enforced by a comptime check below and covered by
+/// a harness case that runs `cube --list` against every dispatchable name).
+const dispatch_table = std.StaticStringMap(Handler).initComptime(.{
+    .{ "echo", hEcho },
+    .{ "true", hTrue },
+    .{ "false", hFalse },
+    .{ "cat", hCat },
+    .{ "ls", hLs },
+    .{ "pwd", hPwd },
+    .{ "mkdir", hMkdir },
+    .{ "rmdir", hRmdir },
+    .{ "rm", hRm },
+    .{ "touch", hTouch },
+    .{ "cp", hCp },
+    .{ "mv", hMv },
+    .{ "ln", hLn },
+    .{ "sleep", hSleep },
+    .{ "yes", hYes },
+    .{ "head", hHead },
+    .{ "tail", hTail },
+    .{ "wc", hWc },
+    .{ "basename", hBasename },
+    .{ "dirname", hDirname },
+    .{ "uname", hUname },
+    .{ "whoami", hWhoami },
+    .{ "id", hId },
+    .{ "date", hDate },
+    .{ "clear", hClear },
+    .{ "seq", hSeq },
+    .{ "test", hTest },
+    .{ "[", hTest },
+    .{ "printf", hPrintf },
+    .{ "env", hEnv },
+    .{ "printenv", hEnv },
+    .{ "which", hWhich },
+    .{ "grep", hGrep },
+    .{ "sort", hSort },
+    .{ "cut", hCut },
+    .{ "uniq", hUniq },
+    .{ "tr", hTr },
+    .{ "rev", hRev },
+    .{ "hostname", hHostname },
+    .{ "readlink", hReadlink },
+    .{ "find", hFind },
+    .{ "du", hDu },
+    .{ "df", hDf },
+    .{ "uptime", hUptime },
+    .{ "free", hFree },
+    .{ "sed", hSed },
+    .{ "mktemp", hMktemp },
+    .{ "kill", hKill },
+    .{ "ps", hPs },
+    .{ "tee", hTee },
+    .{ "xargs", hXargs },
+    .{ "realpath", hRealpath },
+    .{ "base64", hBase64 },
+    .{ "md5sum", hMd5sum },
+    .{ "sha256sum", hSha256sum },
+    .{ "cmp", hCmp },
+    .{ "chmod", hChmod },
+    .{ "nproc", hNproc },
+    .{ "sync", hSync },
+    .{ "od", hOd },
+    .{ "nl", hNl },
+    .{ "tac", hTac },
+    .{ "strings", hStrings },
+    .{ "fold", hFold },
+    .{ "paste", hPaste },
+    .{ "expand", hExpand },
+    .{ "factor", hFactor },
+    .{ "truncate", hTruncate },
+    .{ "split", hSplit },
+    .{ "shuf", hShuf },
+    .{ "expr", hExpr },
+    .{ "unlink", hUnlink },
+    .{ "join", hJoin },
+    .{ "comm", hComm },
+    .{ "fmt", hFmt },
+    .{ "arch", hArch },
+    .{ "dd", hDd },
+    .{ "install", hInstall },
+    .{ "link", hLink },
+    .{ "cksum", hCksum },
+    .{ "stat", hStat },
+    .{ "unexpand", hUnexpand },
+    .{ "gzip", hGzip },
+    .{ "gunzip", hGunzip },
+    .{ "sum", hSum },
+});
+
+comptime {
+    // Every canonical applet name must resolve in the dispatch table, and
+    // vice versa (aliases "[" and "printenv" are the only names the table
+    // carries that applets_list.zig does not list separately... actually
+    // both are listed there too, so this is a straight equality check).
+    if (dispatch_table.kvs.len != applets_list.names.len) {
+        @compileError("dispatch_table and applets_list.names have diverged in size");
     }
 }
 
